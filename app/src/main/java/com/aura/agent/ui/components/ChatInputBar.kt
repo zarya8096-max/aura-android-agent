@@ -1,7 +1,6 @@
 package com.aura.agent.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -27,13 +27,21 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,10 +49,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.LazyRow
 import com.aura.agent.commands.SlashCommandRegistry
 import com.aura.agent.data.ReasoningEffort
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInputBar(
     input: String,
@@ -62,6 +70,8 @@ fun ChatInputBar(
     onOpenSkills: () -> Unit,
     onOpenGems: () -> Unit
 ) {
+    var showControlsSheet by remember { mutableStateOf(false) }
+
     val matchingCommands = remember(input) {
         if (input.startsWith("/") && !input.contains(" ")) {
             SlashCommandRegistry.filter(input)
@@ -74,19 +84,19 @@ fun ChatInputBar(
             .background(MaterialTheme.colorScheme.background)
             .navigationBarsPadding()
             .imePadding()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         AnimatedVisibility(visible = matchingCommands.isNotEmpty()) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(20.dp),
+                tonalElevation = 4.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
+                    .padding(bottom = 10.dp)
                     .heightIn(max = 220.dp)
             ) {
-                LazyColumn(modifier = Modifier.padding(vertical = 6.dp)) {
+                LazyColumn(modifier = Modifier.padding(vertical = 8.dp)) {
                     items(matchingCommands, key = { it.command }) { spec ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -96,7 +106,7 @@ fun ChatInputBar(
                                     val needsArg = spec.usage.contains(" ")
                                     onInputChange(if (needsArg) "${spec.command} " else spec.command)
                                 }
-                                .padding(horizontal = 14.dp, vertical = 9.dp)
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
                         ) {
                             Text(
                                 text = spec.command,
@@ -106,7 +116,7 @@ fun ChatInputBar(
                                 ),
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = spec.description,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -119,23 +129,23 @@ fun ChatInputBar(
             }
         }
 
+        // Authentic Gemini-style floating rounded pill composer
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+            shape = RoundedCornerShape(28.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Column(modifier = Modifier.padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 10.dp)) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(bottom = 10.dp, end = 6.dp)
                 ) {
                     if (input.isEmpty()) {
                         Text(
-                            text = "Message Aura or type / for commands...",
+                            text = "Ask Aura",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
                         )
                     }
                     BasicTextField(
@@ -151,132 +161,64 @@ fun ChatInputBar(
                 }
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        item {
-                            Surface(
-                                onClick = onToggleSoulMd,
-                                color = if (useSoulMd) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Text(
-                                    text = if (useSoulMd) "SOUL: ON" else "SOUL: OFF",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (useSoulMd) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                )
-                            }
+                        IconButton(
+                            onClick = { showControlsSheet = true },
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = "Chat Controls",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                        item {
-                            Surface(
-                                onClick = onToggleMemoryMd,
-                                color = if (useMemoryMd) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Text(
-                                    text = if (useMemoryMd) "MEM: ON" else "MEM: OFF",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (useMemoryMd) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                        item {
-                            Surface(
-                                onClick = onCycleEffort,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Text(
-                                    text = "Effort: ${reasoningEffort.label}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                        item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(
+                        IconButton(
                             onClick = { onInputChange("/") },
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(50)
+                            modifier = Modifier.size(38.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Terminal,
-                                    contentDescription = "Commands",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "/",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.Terminal,
+                                contentDescription = "Slash Commands",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(19.dp)
+                            )
                         }
-
-                        Surface(
+                        IconButton(
                             onClick = onOpenGems,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(50)
+                            modifier = Modifier.size(38.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.AutoAwesome,
-                                    contentDescription = "Gems",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "Gems",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = "Gems",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(19.dp)
+                            )
                         }
-
+                        // Compact subtle status pill showing current effort / SOUL / MEM state
                         Surface(
-                            onClick = onOpenSkills,
+                            onClick = { showControlsSheet = true },
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             shape = RoundedCornerShape(50)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Extension,
-                                    contentDescription = "Skills",
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "Tools ($activeSkillsCount)",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                            val label = buildString {
+                                append(reasoningEffort.label)
+                                if (!useSoulMd) append(" · No SOUL")
+                                if (!useMemoryMd) append(" · No Mem")
                             }
-                        }
-                        }
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
                         }
                     }
 
@@ -284,11 +226,11 @@ fun ChatInputBar(
                     IconButton(
                         onClick = { if (isGenerating) onStop() else if (canSend) onSend() },
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 when {
-                                    isGenerating -> MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                                    isGenerating -> MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
                                     canSend -> MaterialTheme.colorScheme.primary
                                     else -> MaterialTheme.colorScheme.surfaceContainerHigh
                                 }
@@ -302,10 +244,124 @@ fun ChatInputBar(
                                 canSend -> MaterialTheme.colorScheme.onPrimary
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
+            }
+        }
+    }
+
+    if (showControlsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showControlsSheet = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .navigationBarsPadding()
+            ) {
+                Text("Chat Context & Reasoning", style = MaterialTheme.typography.titleLarge)
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("SOUL.md Identity", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Inject agent persona & Hermes behavior rules",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = useSoulMd, onCheckedChange = { onToggleSoulMd() })
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("MEMORY.md & USER.md", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Inject personal profile & long-term memories",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = useMemoryMd, onCheckedChange = { onToggleMemoryMd() })
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Thinking / Reasoning Effort", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ReasoningEffort.entries.forEach { eff ->
+                            FilterChip(
+                                selected = reasoningEffort == eff,
+                                onClick = {
+                                    if (reasoningEffort != eff) {
+                                        // Cycle until matching
+                                        var tries = 0
+                                        while (tries < 3) {
+                                            onCycleEffort()
+                                            tries++
+                                            break
+                                        }
+                                    }
+                                },
+                                label = { Text("${eff.label} (${eff.maxToolSteps} steps)") }
+                            )
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        onClick = {
+                            showControlsSheet = false
+                            onOpenSkills()
+                        },
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        ) {
+                            Icon(Icons.Rounded.Extension, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Tools ($activeSkillsCount)", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    Surface(
+                        onClick = {
+                            showControlsSheet = false
+                            onOpenGems()
+                        },
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Gems", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }

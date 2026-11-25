@@ -27,6 +27,8 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -103,11 +105,22 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            SparkleIcon(size = 20.dp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Aura", style = MaterialTheme.typography.titleLarge)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                SparkleIcon(size = 20.dp)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Aura", style = MaterialTheme.typography.titleLarge)
+                            }
+                            IconButton(onClick = { vm.toggleDarkLightMode() }) {
+                                Icon(
+                                    imageVector = if (state.themePreset.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                                    contentDescription = "Toggle Light/Dark Mode"
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -273,6 +286,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         state = state,
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onNewChat = { vm.startNewChat(null) },
+                        onToggleDarkLight = { vm.toggleDarkLightMode() },
                         onSelectProvider = { vm.selectProvider(it) },
                         onSendMessage = { vm.sendMessage(it) },
                         onStop = { vm.stopGeneration() },
@@ -358,6 +372,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         themePreset = state.themePreset,
                         testStatus = state.providerTestStatus,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onToggleDarkLight = { vm.toggleDarkLightMode() },
                         onSelectTheme = { vm.setThemePreset(it) },
                         onSelectProvider = { vm.selectProvider(it) },
                         onSaveProvider = { vm.updateProvider(it) },

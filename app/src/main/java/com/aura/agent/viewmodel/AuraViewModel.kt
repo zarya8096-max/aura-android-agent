@@ -350,6 +350,12 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { s -> s.copy(auditLogs = (listOf(entry) + s.auditLogs).take(100)) }
     }
 
+    fun toggleDarkLightMode() {
+        val curr = _state.value.themePreset
+        val next = if (curr.isDark) AppThemePreset.WARM_ALABASTER else AppThemePreset.GEMINI_MIDNIGHT
+        setThemePreset(next)
+    }
+
     fun setThemePreset(preset: AppThemePreset) {
         _state.update { it.copy(themePreset = preset) }
         persist()
