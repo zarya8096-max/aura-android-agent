@@ -153,11 +153,7 @@ private fun AddSkillDialog(
     onSave: (AgentSkill) -> Unit
 ) {
     var selectedType by remember { mutableStateOf(SkillType.PROMPT_SKILL) }
-    var rawSkillMd by remember { mutableStateOf("---
-name: my-skill
-description: Short description
----
-Instructions here...") }
+    var rawSkillMd by remember { mutableStateOf("---\nname: my-skill\ndescription: Short description\n---\nInstructions here...") }
     var webhookName by remember { mutableStateOf("") }
     var webhookDesc by remember { mutableStateOf("") }
     var webhookUrl by remember { mutableStateOf("https://") }

@@ -164,11 +164,7 @@ object Defaults {
             description = "Prompt skill: Keeps Persian technical answers crisp, natural, and well-structured.",
             type = SkillType.PROMPT_SKILL,
             enabled = false,
-            instructions = "---
-name: persian-tech-style
-description: Natural Persian technical communication.
----
-When responding in Persian, keep technical terms accurate, avoid overly stiff translations, and structure steps clearly.",
+            instructions = "---\nname: persian-tech-style\ndescription: Natural Persian technical communication.\n---\nWhen responding in Persian, keep technical terms accurate, avoid overly stiff translations, and structure steps clearly.",
             isBuiltIn = true
         )
     )

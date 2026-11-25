@@ -361,12 +361,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
 
-                    if (streamedBuffer.isNotEmpty() && !streamedBuffer.endsWith("
-
-")) {
-                        streamedBuffer.append("
-
-")
+                    if (streamedBuffer.isNotEmpty() && !streamedBuffer.endsWith("\n\n")) {
+                        streamedBuffer.append("\n\n")
                     }
                 }
 

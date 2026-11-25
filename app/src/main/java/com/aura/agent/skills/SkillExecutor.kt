@@ -188,11 +188,9 @@ class SkillExecutor(
                     httpClient.newCall(req).execute().use { resp ->
                         val body = resp.body?.string().orEmpty().take(4000)
                         if (resp.isSuccessful) {
-                            ToolExecutionResult("HTTP ${resp.code}:
-$body")
+                            ToolExecutionResult("HTTP ${resp.code}:\n$body")
                         } else {
-                            ToolExecutionResult("HTTP ${resp.code} error:
-$body", true)
+                            ToolExecutionResult("HTTP ${resp.code} error:\n$body", true)
                         }
                     }
                 }
@@ -226,8 +224,7 @@ $body", true)
                         if (found != null) ToolExecutionResult("${found.key}: ${found.value}")
                         else ToolExecutionResult("No note found for key '$key'.")
                     } else {
-                        ToolExecutionResult(notes.joinToString("
-") { "- ${it.key}: ${it.value}" })
+                        ToolExecutionResult(notes.joinToString("\n") { "- ${it.key}: ${it.value}" })
                     }
                 }
                 else -> {
@@ -265,8 +262,7 @@ $body", true)
         }
         httpClient.newCall(builder.build()).execute().use { resp ->
             val body = resp.body?.string().orEmpty().take(4000)
-            return ToolExecutionResult("HTTP ${resp.code}:
-$body", !resp.isSuccessful)
+            return ToolExecutionResult("HTTP ${resp.code}:\n$body", !resp.isSuccessful)
         }
     }
 
@@ -280,8 +276,7 @@ $body", !resp.isSuccessful)
         fun parseSkillMarkdown(rawMarkdown: String): Triple<String, String, String> {
             val trimmed = rawMarkdown.trim()
             if (trimmed.startsWith("---")) {
-                val endIdx = trimmed.indexOf("
----", startIndex = 3)
+                val endIdx = trimmed.indexOf("\n---", startIndex = 3)
                 if (endIdx != -1) {
                     val frontmatter = trimmed.substring(3, endIdx)
                     val body = trimmed.substring(endIdx + 4).trim()
@@ -291,7 +286,7 @@ $body", !resp.isSuccessful)
                         val parts = line.split(":", limit = 2)
                         if (parts.size == 2) {
                             val k = parts[0].trim().lowercase(Locale.US)
-                            val v = parts[1].trim().trim('"', ''')
+                            val v = parts[1].trim().trim('"', '\'')
                             if (k == "name" && v.isNotBlank()) name = v
                             if (k == "description" && v.isNotBlank()) desc = v
                         }

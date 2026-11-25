@@ -281,7 +281,7 @@ private data class TextSegment(val content: String, val isCode: Boolean, val lan
 
 private fun splitMarkdownCodeBlocks(raw: String): List<TextSegment> {
     val result = mutableListOf<TextSegment>()
-    val regex = Regex("```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```")
+    val regex = Regex("```([a-zA-Z0-9_+-]*)\\n([\\s\\S]*?)```")
     var lastIdx = 0
     for (match in regex.findAll(raw)) {
         if (match.range.first > lastIdx) {
