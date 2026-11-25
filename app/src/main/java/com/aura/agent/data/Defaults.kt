@@ -15,16 +15,27 @@ object Defaults {
             )
         ),
         ProviderConfig(
+            id = "openrouter",
+            name = "OpenRouter (200+ Models & Free Tier)",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://openrouter.ai/api/v1",
+            model = "google/gemini-2.5-flash",
+            availableModels = listOf(
+                "google/gemini-2.5-flash",
+                "anthropic/claude-3.7-sonnet",
+                "deepseek/deepseek-r1:free",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "qwen/qwen-2.5-coder-32b-instruct:free",
+                "openai/gpt-4o-mini"
+            )
+        ),
+        ProviderConfig(
             id = "openai",
             name = "OpenAI",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "https://api.openai.com/v1",
             model = "gpt-4o-mini",
-            availableModels = listOf(
-                "gpt-4o-mini",
-                "gpt-4o",
-                "o3-mini"
-            )
+            availableModels = listOf("gpt-4o-mini", "gpt-4o", "o3-mini")
         ),
         ProviderConfig(
             id = "anthropic",
@@ -32,25 +43,7 @@ object Defaults {
             protocol = ApiProtocol.ANTHROPIC,
             baseUrl = "https://api.anthropic.com/v1",
             model = "claude-3-7-sonnet-latest",
-            availableModels = listOf(
-                "claude-3-7-sonnet-latest",
-                "claude-3-5-sonnet-latest",
-                "claude-3-5-haiku-latest"
-            )
-        ),
-        ProviderConfig(
-            id = "openrouter",
-            name = "OpenRouter (200+ Models)",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://openrouter.ai/api/v1",
-            model = "google/gemini-2.5-flash",
-            availableModels = listOf(
-                "google/gemini-2.5-flash",
-                "anthropic/claude-3.7-sonnet",
-                "deepseek/deepseek-r1",
-                "openai/gpt-4o-mini",
-                "meta-llama/llama-3.3-70b-instruct"
-            )
+            availableModels = listOf("claude-3-7-sonnet-latest", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest")
         ),
         ProviderConfig(
             id = "deepseek",
@@ -62,20 +55,52 @@ object Defaults {
         ),
         ProviderConfig(
             id = "groq",
-            name = "Groq",
+            name = "Groq (Ultra-Fast)",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "https://api.groq.com/openai/v1",
             model = "llama-3.3-70b-versatile",
             availableModels = listOf("llama-3.3-70b-versatile", "qwen-2.5-32b")
         ),
         ProviderConfig(
+            id = "xai",
+            name = "xAI (Grok)",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.x.ai/v1",
+            model = "grok-2-latest",
+            availableModels = listOf("grok-2-latest", "grok-2-mini")
+        ),
+        ProviderConfig(
+            id = "mistral",
+            name = "Mistral AI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.mistral.ai/v1",
+            model = "mistral-large-latest",
+            availableModels = listOf("mistral-large-latest", "codestral-latest")
+        ),
+        ProviderConfig(
+            id = "together",
+            name = "Together AI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.together.xyz/v1",
+            model = "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            availableModels = listOf("meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-Coder-32B-Instruct")
+        ),
+        ProviderConfig(
+            id = "cerebras",
+            name = "Cerebras",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.cerebras.ai/v1",
+            model = "llama-3.3-70b",
+            availableModels = listOf("llama-3.3-70b", "llama3.1-8b")
+        ),
+        ProviderConfig(
             id = "ollama",
             name = "Ollama / Local Server",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "http://10.0.2.2:11434/v1",
+            baseUrl = "http://127.0.0.1:11434/v1",
             apiKey = "ollama",
             model = "llama3.2",
-            availableModels = listOf("llama3.2", "qwen2.5:7b", "deepseek-r1:8b")
+            availableModels = listOf("llama3.2", "qwen2.5-coder:7b", "deepseek-r1:8b")
         )
     )
 

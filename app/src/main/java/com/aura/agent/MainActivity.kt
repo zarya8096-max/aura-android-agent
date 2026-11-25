@@ -300,6 +300,9 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         healthMap = state.providerHealth,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
                         onUpdateConfig = { vm.updateRouterConfig(it) },
+                        gatewayRunning = state.gatewayRunning,
+                        gatewayStatusLog = state.gatewayStatusLog,
+                        onToggleGateway = { vm.toggleLocalGateway(it) },
                         onClearCache = { vm.clearCache() }
                     )
                     ActiveScreen.SETTINGS -> SettingsScreen(

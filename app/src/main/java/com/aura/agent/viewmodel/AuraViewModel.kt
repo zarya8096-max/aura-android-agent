@@ -19,6 +19,7 @@ import com.aura.agent.data.ToolCallTrace
 import com.aura.agent.network.LlmTurnMessage
 import com.aura.agent.router.AuraCacheEngine
 import com.aura.agent.router.AuraRouter
+import com.aura.agent.router.LocalApiGateway
 import com.aura.agent.router.ProviderHealth
 import com.aura.agent.skills.SkillExecutor
 import kotlinx.coroutines.Job
@@ -47,7 +48,9 @@ data class AuraUiState(
     val routerConfig: RouterConfig = RouterConfig(),
     val cacheEntries: List<CacheEntry> = emptyList(),
     val routerStats: RouterStats = RouterStats(),
-    val providerHealth: Map<String, ProviderHealth> = emptyMap()
+    val providerHealth: Map<String, ProviderHealth> = emptyMap(),
+    val gatewayRunning: Boolean = false,
+    val gatewayStatusLog: String = "Stopped (127.0.0.1:8910)"
 ) {
     val activeProvider: ProviderConfig?
         get() = providers.firstOrNull { it.id == activeProviderId } ?: providers.firstOrNull()
@@ -65,6 +68,15 @@ data class AuraUiState(
 class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val store = LocalStore(application.applicationContext)
     private val router = AuraRouter()
+    private val gateway = LocalApiGateway(
+        router = router,
+        getProviders = { _state.value.providers },
+        getActiveProviderId = { _state.value.activeProviderId },
+        getRouterConfig = { _state.value.routerConfig },
+        onRequestLogged = { log ->
+            _state.update { it.copy(gatewayStatusLog = log, providerHealth = router.getHealthSnapshot()) }
+        }
+    )
     private val _state = MutableStateFlow(AuraUiState())
     val state: StateFlow<AuraUiState> = _state.asStateFlow()
 
@@ -123,6 +135,21 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     fun updateRouterConfig(config: RouterConfig) {
         _state.update { it.copy(routerConfig = config) }
         persist()
+    }
+
+    fun toggleLocalGateway(enable: Boolean) {
+        if (enable) {
+            val ok = gateway.start(port = 8910, bindAllInterfaces = false)
+            _state.update { it.copy(gatewayRunning = ok) }
+        } else {
+            gateway.stop()
+            _state.update { it.copy(gatewayRunning = false) }
+        }
+    }
+
+    override fun onCleared() {
+        gateway.stop()
+        super.onCleared()
     }
 
     fun clearCache() {

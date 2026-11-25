@@ -14,7 +14,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -49,6 +53,9 @@ fun RouterScreen(
     healthMap: Map<String, ProviderHealth>,
     onBack: () -> Unit,
     onUpdateConfig: (RouterConfig) -> Unit,
+    gatewayRunning: Boolean,
+    gatewayStatusLog: String,
+    onToggleGateway: (Boolean) -> Unit,
     onClearCache: () -> Unit
 ) {
     Scaffold(
@@ -65,6 +72,8 @@ fun RouterScreen(
             )
         }
     ) { padding ->
+        val clipboard = LocalClipboardManager.current
+        val openCodeSnippet = "{\n  \"provider\": {\n    \"aura\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"AuraRouter Local\",\n      \"options\": { \"baseURL\": \"http://127.0.0.1:8910/v1\", \"apiKey\": \"aura-local\" },\n      \"models\": { \"aura/auto\": { \"name\": \"Aura Smart Auto\" } }\n    }\n  }\n}"
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -72,6 +81,37 @@ fun RouterScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        ToggleRow(
+                            title = "Local API Aggregator (OpenCode / CLI)",
+                            subtitle = "OpenAI-compatible endpoint: http://127.0.0.1:8910/v1 (model: aura/auto)",
+                            checked = gatewayRunning,
+                            onCheckedChange = onToggleGateway
+                        )
+                        Text(
+                            text = gatewayStatusLog,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (gatewayRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = { clipboard.setText(AnnotatedString(openCodeSnippet)) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = null)
+                            Text(" Copy OpenCode Config (opencode.json)")
+                        }
+                    }
+                }
+            }
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
