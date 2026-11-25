@@ -50,7 +50,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
 import com.aura.agent.data.Gem
+import com.aura.agent.data.ReasoningEffort
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,6 +186,9 @@ private fun GemEditorDialog(
     var description by remember { mutableStateOf(initial?.description.orEmpty()) }
     var instructions by remember { mutableStateOf(initial?.instructions.orEmpty()) }
     var accentHex by remember { mutableStateOf(initial?.accentHex ?: palette.first()) }
+    var useSoulMd by remember { mutableStateOf(initial?.useSoulMd ?: true) }
+    var useMemoryMd by remember { mutableStateOf(initial?.useMemoryMd ?: true) }
+    var effort by remember { mutableStateOf(initial?.reasoningEffort ?: ReasoningEffort.MEDIUM) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -214,6 +220,31 @@ private fun GemEditorDialog(
                     maxLines = 8,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Use SOUL.md", style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = useSoulMd, onCheckedChange = { useSoulMd = it })
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Use MEMORY.md", style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = useMemoryMd, onCheckedChange = { useMemoryMd = it })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ReasoningEffort.entries.forEach { e ->
+                        FilterChip(
+                            selected = effort == e,
+                            onClick = { effort = e },
+                            label = { Text(e.label) }
+                        )
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     palette.forEach { hex ->
                         Box(
@@ -236,7 +267,10 @@ private fun GemEditorDialog(
                                 name = name.trim(),
                                 description = description.trim().ifBlank { "Custom Gem" },
                                 instructions = instructions.trim(),
-                                accentHex = accentHex
+                                accentHex = accentHex,
+                                useSoulMd = useSoulMd,
+                                useMemoryMd = useMemoryMd,
+                                reasoningEffort = effort
                             )
                         )
                     }

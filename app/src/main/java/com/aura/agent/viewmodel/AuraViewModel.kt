@@ -6,7 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.aura.agent.commands.SlashCommandRegistry
 import com.aura.agent.data.AgentSkill
 import com.aura.agent.data.Defaults
+import com.aura.agent.data.AuditLogEntry
+import com.aura.agent.data.ReasoningEffort
 import com.aura.agent.data.RoutingMode
+import com.aura.agent.data.ToolPermissionMode
+import kotlinx.coroutines.CompletableDeferred
 import com.aura.agent.data.ApiProtocol
 import com.aura.agent.data.AppStateSnapshot
 import com.aura.agent.data.AppThemePreset
@@ -50,6 +54,13 @@ data class DownloadProgress(
     val totalBytes: Long
 )
 
+
+data class PendingToolApproval(
+    val toolName: String,
+    val arguments: String,
+    val deferred: CompletableDeferred<Boolean>
+)
+
 data class AuraUiState(
     val providers: List<ProviderConfig> = emptyList(),
     val activeProviderId: String = "",
@@ -77,7 +88,13 @@ data class AuraUiState(
     val providerHealth: Map<String, ProviderHealth> = emptyMap(),
     val gatewayRunning: Boolean = false,
     val gatewayStatusLog: String = "Stopped (127.0.0.1:8910)",
-    val providerTestStatus: String? = null
+    val providerTestStatus: String? = null,
+    val draftUseSoulMd: Boolean = true,
+    val draftUseMemoryMd: Boolean = true,
+    val draftReasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
+    val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
+    val auditLogs: List<AuditLogEntry> = emptyList(),
+    val pendingApproval: PendingToolApproval? = null
 ) {
     val activeProvider: ProviderConfig?
         get() = providers.firstOrNull { it.id == activeProviderId } ?: providers.firstOrNull()
@@ -90,6 +107,15 @@ data class AuraUiState(
             val gId = activeSession?.gemId ?: activeGemId
             return gems.firstOrNull { it.id == gId }
         }
+
+    val effectiveUseSoulMd: Boolean
+        get() = activeSession?.useSoulMd ?: draftUseSoulMd
+
+    val effectiveUseMemoryMd: Boolean
+        get() = activeSession?.useMemoryMd ?: draftUseMemoryMd
+
+    val effectiveReasoningEffort: ReasoningEffort
+        get() = activeSession?.reasoningEffort ?: draftReasoningEffort
 }
 
 class AuraViewModel(application: Application) : AndroidViewModel(application) {
@@ -121,6 +147,20 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         isToolCacheEnabled = { _state.value.routerConfig.toolMemoizationEnabled },
         onToolCacheHit = {
             _state.update { s -> s.copy(routerStats = s.routerStats.copy(toolCacheHits = s.routerStats.toolCacheHits + 1)) }
+        },
+        runSubagent = { role, task ->
+            val subRouted = router.completeWithRouting(
+                providers = _state.value.providers,
+                activeProviderId = _state.value.activeProviderId,
+                config = _state.value.routerConfig,
+                systemPrompt = "You are a focused subagent acting as: $role. Complete the delegated task concisely and accurately.",
+                messages = listOf(LlmTurnMessage(role = "user", content = task)),
+                tools = emptyList(),
+                latestUserPrompt = task,
+                onDelta = {}
+            )
+            "[Subagent: $role · ${subRouted.usedProvider.model}]
+${subRouted.response.text}"
         }
     )
 
@@ -141,7 +181,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             themePreset = snap.themePreset,
             routerConfig = snap.routerConfig,
             cacheEntries = snap.cacheEntries,
-            routerStats = snap.routerStats
+            routerStats = snap.routerStats,
+            toolPolicies = snap.toolPolicies,
+            auditLogs = snap.auditLogs
         )
     }
 
@@ -161,7 +203,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 themePreset = s.themePreset,
                 routerConfig = s.routerConfig,
                 cacheEntries = s.cacheEntries,
-                routerStats = s.routerStats
+                routerStats = s.routerStats,
+                toolPolicies = s.toolPolicies,
+                auditLogs = s.auditLogs.take(100)
             )
         )
     }
@@ -171,6 +215,70 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         if (screen == ActiveScreen.LOCAL_MODELS && _state.value.hfSearchResults.isEmpty()) {
             searchHuggingFace("")
         }
+    }
+
+
+    fun toggleChatSoulMd() {
+        _state.update { s ->
+            val sid = s.activeSessionId
+            if (sid == null) {
+                s.copy(draftUseSoulMd = !s.draftUseSoulMd)
+            } else {
+                s.copy(sessions = s.sessions.map { if (it.id == sid) it.copy(useSoulMd = !it.useSoulMd) else it })
+            }
+        }
+        persist()
+    }
+
+    fun toggleChatMemoryMd() {
+        _state.update { s ->
+            val sid = s.activeSessionId
+            if (sid == null) {
+                s.copy(draftUseMemoryMd = !s.draftUseMemoryMd)
+            } else {
+                s.copy(sessions = s.sessions.map { if (it.id == sid) it.copy(useMemoryMd = !it.useMemoryMd) else it })
+            }
+        }
+        persist()
+    }
+
+    fun setReasoningEffort(effort: ReasoningEffort) {
+        _state.update { s ->
+            val sid = s.activeSessionId
+            if (sid == null) {
+                s.copy(draftReasoningEffort = effort)
+            } else {
+                s.copy(sessions = s.sessions.map { if (it.id == sid) it.copy(reasoningEffort = effort) else it })
+            }
+        }
+        persist()
+    }
+
+    fun cycleReasoningEffort() {
+        val curr = _state.value.effectiveReasoningEffort
+        val next = when (curr) {
+            ReasoningEffort.LOW -> ReasoningEffort.MEDIUM
+            ReasoningEffort.MEDIUM -> ReasoningEffort.HIGH
+            ReasoningEffort.HIGH -> ReasoningEffort.LOW
+        }
+        setReasoningEffort(next)
+    }
+
+    fun setToolPolicy(toolName: String, mode: ToolPermissionMode) {
+        _state.update { s -> s.copy(toolPolicies = s.toolPolicies + (toolName to mode)) }
+        persist()
+    }
+
+    fun respondToToolApproval(approved: Boolean) {
+        val pending = _state.value.pendingApproval ?: return
+        _state.update { it.copy(pendingApproval = null) }
+        pending.deferred.complete(approved)
+    }
+
+    private fun recordAudit(toolName: String, decision: String, summary: String) {
+        val gemName = _state.value.activeGem?.name ?: "Default"
+        val entry = AuditLogEntry(toolName = toolName, sourceGem = gemName, decision = decision, summary = summary.take(180))
+        _state.update { s -> s.copy(auditLogs = (listOf(entry) + s.auditLogs).take(100)) }
     }
 
     fun setThemePreset(preset: AppThemePreset) {
@@ -371,6 +479,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 activeSessionId = null,
                 activeGemId = gemId,
                 activeProviderId = updatedProviderId,
+                draftUseSoulMd = gem?.useSoulMd ?: true,
+                draftUseMemoryMd = gem?.useMemoryMd ?: true,
+                draftReasoningEffort = gem?.reasoningEffort ?: ReasoningEffort.MEDIUM,
                 activeScreen = ActiveScreen.CHAT,
                 isGenerating = false
             )
@@ -595,6 +706,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 title = prompt.take(36),
                 gemId = currentGem?.id,
                 providerId = _state.value.activeProviderId,
+                useSoulMd = _state.value.draftUseSoulMd,
+                useMemoryMd = _state.value.draftUseMemoryMd,
+                reasoningEffort = _state.value.draftReasoningEffort,
                 messages = listOf(userMsg, assistantMsg)
             )
             sessionId = newSession.id
@@ -633,9 +747,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 var usedProviderLabel = ""
                 var anyFallback = false
 
-                // Hermes-inspired multi-step autonomous tool loop (up to 8 steps)
+                val maxRounds = _state.value.effectiveReasoningEffort.maxToolSteps
                 var round = 0
-                while (round < 8) {
+                while (round < maxRounds) {
                     round++
                     val routed = router.completeWithRouting(
                         providers = _state.value.providers,
@@ -679,7 +793,31 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     )
 
                     for (tc in routed.response.toolCalls) {
-                        val execResult = skillExecutor.execute(tc.name, tc.argumentsJson, enabledSkills)
+                        val policy = _state.value.toolPolicies[tc.name] ?: ToolPermissionMode.ALLOW
+                        val execResult = when (policy) {
+                            ToolPermissionMode.DENY -> {
+                                recordAudit(tc.name, "DENIED", "Blocked by OpenBot Action Policy")
+                                com.aura.agent.skills.ToolExecutionResult("Action blocked by user policy for tool '${tc.name}'.", isError = true)
+                            }
+                            ToolPermissionMode.ASK -> {
+                                val def = CompletableDeferred<Boolean>()
+                                _state.update { it.copy(pendingApproval = PendingToolApproval(tc.name, tc.argumentsJson, def)) }
+                                val ok = def.await()
+                                if (!ok) {
+                                    recordAudit(tc.name, "DENIED", "User rejected tool call")
+                                    com.aura.agent.skills.ToolExecutionResult("User denied permission to run '${tc.name}'.", isError = true)
+                                } else {
+                                    val r = skillExecutor.execute(tc.name, tc.argumentsJson, enabledSkills)
+                                    recordAudit(tc.name, if (r.isError) "ERROR" else "APPROVED", r.output)
+                                    r
+                                }
+                            }
+                            ToolPermissionMode.ALLOW -> {
+                                val r = skillExecutor.execute(tc.name, tc.argumentsJson, enabledSkills)
+                                recordAudit(tc.name, if (r.isError) "ERROR" else "ALLOWED", r.output)
+                                r
+                            }
+                        }
                         traces.add(
                             ToolCallTrace(
                                 toolName = tc.name,
@@ -781,30 +919,41 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         val sb = StringBuilder()
         val s = _state.value
 
-        if (s.soulMarkdown.isNotBlank()) {
+        if (s.effectiveUseSoulMd && s.soulMarkdown.isNotBlank()) {
             sb.appendLine(s.soulMarkdown.trim())
             sb.appendLine()
         }
-        if (s.userProfileMarkdown.isNotBlank()) {
+        if (s.effectiveUseMemoryMd && s.userProfileMarkdown.isNotBlank()) {
             sb.appendLine(s.userProfileMarkdown.trim())
             sb.appendLine()
         }
 
-        // Inject pinned memories + top keyword-matched memories automatically
-        val normPrompt = AuraCacheEngine.normalizeText(prompt)
-        val promptWords = normPrompt.split(' ').filter { it.length >= 3 }.toSet()
-        val pinned = s.memories.filter { it.pinned }
-        val relevant = s.memories.filter { !it.pinned }.filter { mem ->
-            val hay = AuraCacheEngine.normalizeText("${mem.key} ${mem.content} ${mem.category}")
-            promptWords.any { hay.contains(it) }
-        }.take(6)
-        val injectedMemories = (pinned + relevant).distinctBy { it.id }.take(12)
-        if (injectedMemories.isNotEmpty()) {
-            sb.appendLine("# Active Long-Term Memory (MEMORY.md)")
-            for (m in injectedMemories) {
-                sb.appendLine("- [${m.category}] ${m.key}: ${m.content}")
+        if (s.effectiveUseMemoryMd) {
+            val activeGemId = gem?.id
+            val visibleMemories = s.memories.filter { m ->
+                m.scope == "global" || (activeGemId != null && m.sourceGemId == activeGemId)
             }
-            sb.appendLine()
+            val normPrompt = AuraCacheEngine.normalizeText(prompt)
+            val promptWords = normPrompt.split(' ').filter { it.length >= 3 }.toSet()
+            val pinned = visibleMemories.filter { it.pinned }
+            val relevant = visibleMemories.filter { !it.pinned }.filter { mem ->
+                val hay = AuraCacheEngine.normalizeText("${mem.key} ${mem.content} ${mem.category}")
+                promptWords.any { hay.contains(it) }
+            }.take(6)
+            val injectedMemories = (pinned + relevant).distinctBy { it.id }.take(12)
+            if (injectedMemories.isNotEmpty()) {
+                sb.appendLine("# Active Long-Term Memory (MEMORY.md)")
+                for (m in injectedMemories) {
+                    sb.appendLine("- [${m.category}] ${m.key}: ${m.content}")
+                }
+                sb.appendLine()
+            }
+        }
+
+        when (s.effectiveReasoningEffort) {
+            ReasoningEffort.LOW -> sb.appendLine("# Reasoning Effort: LOW — Be extra brief and direct.")
+            ReasoningEffort.MEDIUM -> Unit
+            ReasoningEffort.HIGH -> sb.appendLine("# Reasoning Effort: HIGH — Think deeply, verify edge cases, and delegate subtasks via spawn_subagent when helpful.")
         }
 
         if (gem != null && gem.instructions.isNotBlank()) {
@@ -1121,6 +1270,45 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     val outFile = File(store.workspaceDir, fileName)
                     outFile.writeText(md)
                     appendLocalCommandReply(raw, "Exported ${sess.messages.size} messages to local workspace: `$fileName`", "Command · /export")
+                }
+                return true
+            }
+            "/effort" -> {
+                val eff = when (arg.lowercase()) {
+                    "low" -> ReasoningEffort.LOW
+                    "medium", "med" -> ReasoningEffort.MEDIUM
+                    "high" -> ReasoningEffort.HIGH
+                    else -> null
+                }
+                if (eff != null) {
+                    setReasoningEffort(eff)
+                    appendLocalCommandReply(raw, "Reasoning effort set to **${eff.label}** (max ${eff.maxToolSteps} tool steps).", "Command · /effort")
+                } else {
+                    appendLocalCommandReply(raw, "Current reasoning effort: **${_state.value.effectiveReasoningEffort.label}**. Use `/effort low|medium|high`.", "Command · /effort")
+                }
+                return true
+            }
+            "/policy" -> {
+                val pParts = arg.split(Regex("\\s+"))
+                if (pParts.size == 2) {
+                    val tool = pParts[0]
+                    val mode = when (pParts[1].lowercase()) {
+                        "allow" -> ToolPermissionMode.ALLOW
+                        "ask" -> ToolPermissionMode.ASK
+                        "deny", "block" -> ToolPermissionMode.DENY
+                        else -> null
+                    }
+                    if (mode != null) {
+                        setToolPolicy(tool, mode)
+                        appendLocalCommandReply(raw, "Policy for `$tool` set to **${mode.label}**.", "Command · /policy")
+                    } else {
+                        appendLocalCommandReply(raw, "Invalid mode. Use allow, ask, or deny.", "Command · /policy")
+                    }
+                } else {
+                    val policies = _state.value.toolPolicies
+                    val summary = if (policies.isEmpty()) "All tools default to Auto-Allow."
+                    else policies.entries.joinToString("\n") { "- `${it.key}`: ${it.value.label}" }
+                    appendLocalCommandReply(raw, "OpenBot Tool Policies:\n$summary\n\nUsage: `/policy http_fetch ask`", "Command · /policy")
                 }
                 return true
             }

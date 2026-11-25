@@ -50,7 +50,8 @@ class SkillExecutor(
     private val upsertMemory: (key: String, content: String, category: String, tags: List<String>) -> Unit,
     private val deleteMemoryByKey: (key: String) -> Boolean,
     private val isToolCacheEnabled: () -> Boolean,
-    private val onToolCacheHit: () -> Unit
+    private val onToolCacheHit: () -> Unit,
+    private val runSubagent: suspend (role: String, task: String) -> String
 ) {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -64,6 +65,20 @@ class SkillExecutor(
         for (skill in enabledSkills) {
             when (skill.type) {
                 SkillType.BUILTIN_TOOL -> when (skill.slug) {
+                    "spawn_subagent" -> specs.add(
+                        ToolSpec(
+                            name = "spawn_subagent",
+                            description = "Spawn an isolated subagent with a focused role to solve a subtask cleanly without polluting main context.",
+                            parametersSchema = buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("role", buildJsonObject { put("type", "string"); put("description", "Short role e.g. 'Code Reviewer' or 'Fact Checker'") })
+                                    put("task", buildJsonObject { put("type", "string"); put("description", "Clear self-contained subtask prompt") })
+                                })
+                                put("required", buildJsonArray { add(JsonPrimitive("role")); add(JsonPrimitive("task")) })
+                            }
+                        )
+                    )
                     "web_search" -> specs.add(
                         ToolSpec(
                             name = "web_search",
@@ -248,6 +263,12 @@ class SkillExecutor(
 
         val result = try {
             when (toolName) {
+                "spawn_subagent" -> {
+                    val role = args["role"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty().ifBlank { "Specialist Subagent" }
+                    val task = args["task"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    if (task.isBlank()) ToolExecutionResult("task is required.", true)
+                    else ToolExecutionResult(runSubagent(role, task))
+                }
                 "web_search" -> runWebSearch(args["query"]?.jsonPrimitive?.contentOrNull.orEmpty())
                 "http_fetch" -> runHttpFetch(
                     url = args["url"]?.jsonPrimitive?.contentOrNull.orEmpty(),

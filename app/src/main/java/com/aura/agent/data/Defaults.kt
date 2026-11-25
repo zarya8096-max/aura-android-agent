@@ -171,6 +171,15 @@ object Defaults {
 
     fun defaultSkills(): List<AgentSkill> = listOf(
         AgentSkill(
+            id = "skill-subagent",
+            name = "Subagent Delegation (dsh)",
+            slug = "spawn_subagent",
+            description = "Delegates an isolated subtask to a focused subagent (DeepSeek Harness pattern) and returns its result.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
             id = "skill-web-search",
             name = "Web & Wiki Search",
             slug = "web_search",

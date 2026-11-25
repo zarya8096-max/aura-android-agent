@@ -25,8 +25,14 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.TextButtonItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,6 +75,10 @@ fun ChatScreen(
     onSendMessage: (String) -> Unit,
     onStop: () -> Unit,
     onLaunchGem: (String) -> Unit,
+    onToggleSoulMd: () -> Unit,
+    onToggleMemoryMd: () -> Unit,
+    onCycleEffort: () -> Unit,
+    onRespondApproval: (Boolean) -> Unit,
     onOpenGems: () -> Unit,
     onOpenSkills: () -> Unit
 ) {
@@ -182,6 +192,12 @@ fun ChatScreen(
                 onStop = onStop,
                 isGenerating = state.isGenerating,
                 activeSkillsCount = state.skills.count { it.enabled },
+                useSoulMd = state.effectiveUseSoulMd,
+                useMemoryMd = state.effectiveUseMemoryMd,
+                reasoningEffort = state.effectiveReasoningEffort,
+                onToggleSoulMd = onToggleSoulMd,
+                onToggleMemoryMd = onToggleMemoryMd,
+                onCycleEffort = onCycleEffort,
                 onOpenSkills = onOpenSkills,
                 onOpenGems = onOpenGems
             )
@@ -210,6 +226,30 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    val pending = state.pendingApproval
+    if (pending != null) {
+        AlertDialog(
+            onDismissRequest = { onRespondApproval(false) },
+            title = { Text("Tool Approval (OpenBot Policy)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("The agent wants to execute tool: ${pending.toolName}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = pending.arguments.take(500),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { onRespondApproval(true) }) { Text("Approve") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onRespondApproval(false) }) { Text("Deny") }
+            }
+        )
     }
 }
 

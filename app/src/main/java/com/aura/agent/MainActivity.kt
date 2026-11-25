@@ -264,6 +264,10 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onSendMessage = { vm.sendMessage(it) },
                         onStop = { vm.stopGeneration() },
                         onLaunchGem = { vm.startNewChat(it) },
+                        onToggleSoulMd = { vm.toggleChatSoulMd() },
+                        onToggleMemoryMd = { vm.toggleChatMemoryMd() },
+                        onCycleEffort = { vm.cycleReasoningEffort() },
+                        onRespondApproval = { vm.respondToToolApproval(it) },
                         onOpenGems = { vm.navigateTo(ActiveScreen.GEMS) },
                         onOpenSkills = { vm.navigateTo(ActiveScreen.SKILLS) }
                     )

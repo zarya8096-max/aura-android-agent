@@ -41,7 +41,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.LazyRow
 import com.aura.agent.commands.SlashCommandRegistry
+import com.aura.agent.data.ReasoningEffort
 
 @Composable
 fun ChatInputBar(
@@ -51,6 +53,12 @@ fun ChatInputBar(
     onStop: () -> Unit,
     isGenerating: Boolean,
     activeSkillsCount: Int,
+    useSoulMd: Boolean,
+    useMemoryMd: Boolean,
+    reasoningEffort: ReasoningEffort,
+    onToggleSoulMd: () -> Unit,
+    onToggleMemoryMd: () -> Unit,
+    onCycleEffort: () -> Unit,
     onOpenSkills: () -> Unit,
     onOpenGems: () -> Unit
 ) {
@@ -149,7 +157,54 @@ fun ChatInputBar(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    ) {
+                        item {
+                            Surface(
+                                onClick = onToggleSoulMd,
+                                color = if (useSoulMd) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = if (useSoulMd) "SOUL: ON" else "SOUL: OFF",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (useSoulMd) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                onClick = onToggleMemoryMd,
+                                color = if (useMemoryMd) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = if (useMemoryMd) "MEM: ON" else "MEM: OFF",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (useMemoryMd) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                onClick = onCycleEffort,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = "Effort: ${reasoningEffort.label}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Surface(
                             onClick = { onInputChange("/") },
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -220,6 +275,8 @@ fun ChatInputBar(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                        }
+                        }
                         }
                     }
 

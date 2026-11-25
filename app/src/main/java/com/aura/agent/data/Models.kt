@@ -3,6 +3,31 @@ package com.aura.agent.data
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
+
+@Serializable
+enum class ReasoningEffort(val label: String, val maxToolSteps: Int) {
+    LOW("Low", 3),
+    MEDIUM("Medium", 8),
+    HIGH("High", 12)
+}
+
+@Serializable
+enum class ToolPermissionMode(val label: String) {
+    ALLOW("Auto-Allow"),
+    ASK("Ask Approval"),
+    DENY("Block")
+}
+
+@Serializable
+data class AuditLogEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val timestamp: Long = System.currentTimeMillis(),
+    val toolName: String,
+    val sourceGem: String,
+    val decision: String, // ALLOWED, APPROVED, DENIED, ERROR
+    val summary: String
+)
+
 @Serializable
 enum class AppThemePreset(val label: String, val isDark: Boolean) {
     OBSIDIAN_GRAPHITE("Obsidian Graphite", true),
@@ -94,6 +119,9 @@ data class Gem(
     val accentHex: Long = 0xFF7AB8FF,
     val defaultSkillIds: List<String> = emptyList(),
     val preferredProviderId: String? = null,
+    val useSoulMd: Boolean = true,
+    val useMemoryMd: Boolean = true,
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
     val isBuiltIn: Boolean = false
 )
 
@@ -127,6 +155,8 @@ data class MemoryEntry(
     val category: String = "general", // profile, project, preference, finding, general
     val tags: List<String> = emptyList(),
     val pinned: Boolean = false,
+    val sourceGemId: String? = null,
+    val scope: String = "global",
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -169,6 +199,9 @@ data class ChatSession(
     val gemId: String? = null,
     val providerId: String? = null,
     val messages: List<ChatMessage> = emptyList(),
+    val useSoulMd: Boolean = true,
+    val useMemoryMd: Boolean = true,
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -186,5 +219,7 @@ data class AppStateSnapshot(
     val themePreset: AppThemePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
     val routerConfig: RouterConfig = RouterConfig(),
     val cacheEntries: List<CacheEntry> = emptyList(),
-    val routerStats: RouterStats = RouterStats()
+    val routerStats: RouterStats = RouterStats(),
+    val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
+    val auditLogs: List<AuditLogEntry> = emptyList()
 )
