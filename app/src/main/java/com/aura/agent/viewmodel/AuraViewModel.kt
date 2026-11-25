@@ -3,19 +3,25 @@ package com.aura.agent.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.aura.agent.data.AgentNote
 import com.aura.agent.data.AgentSkill
+import com.aura.agent.data.ApiProtocol
 import com.aura.agent.data.AppStateSnapshot
+import com.aura.agent.data.AppThemePreset
 import com.aura.agent.data.CacheEntry
 import com.aura.agent.data.ChatMessage
 import com.aura.agent.data.ChatSession
+import com.aura.agent.data.DownloadedLocalModel
 import com.aura.agent.data.Gem
 import com.aura.agent.data.LocalStore
+import com.aura.agent.data.MemoryEntry
 import com.aura.agent.data.ProviderConfig
 import com.aura.agent.data.RouterConfig
 import com.aura.agent.data.RouterStats
 import com.aura.agent.data.SkillType
 import com.aura.agent.data.ToolCallTrace
+import com.aura.agent.hf.HfGgufFile
+import com.aura.agent.hf.HfModelSummary
+import com.aura.agent.hf.HuggingFaceClient
 import com.aura.agent.network.LlmTurnMessage
 import com.aura.agent.router.AuraCacheEngine
 import com.aura.agent.router.AuraRouter
@@ -28,10 +34,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class ActiveScreen {
-    CHAT, GEMS, SKILLS, ROUTER, SETTINGS
+    CHAT, GEMS, SKILLS, AGENT_BRAIN, LOCAL_MODELS, ROUTER, SETTINGS
 }
+
+data class DownloadProgress(
+    val repoId: String,
+    val fileName: String,
+    val downloadedBytes: Long,
+    val totalBytes: Long
+)
 
 data class AuraUiState(
     val providers: List<ProviderConfig> = emptyList(),
@@ -41,8 +55,17 @@ data class AuraUiState(
     val sessions: List<ChatSession> = emptyList(),
     val activeSessionId: String? = null,
     val activeGemId: String? = null,
-    val notes: List<AgentNote> = emptyList(),
-    val darkMode: Boolean = true,
+    val memories: List<MemoryEntry> = emptyList(),
+    val soulMarkdown: String = "",
+    val userProfileMarkdown: String = "",
+    val localModels: List<DownloadedLocalModel> = emptyList(),
+    val hfSearchResults: List<HfModelSummary> = emptyList(),
+    val hfSelectedRepoFiles: List<HfGgufFile> = emptyList(),
+    val hfSelectedRepoId: String? = null,
+    val hfLoading: Boolean = false,
+    val hfError: String? = null,
+    val activeDownload: DownloadProgress? = null,
+    val themePreset: AppThemePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
     val isGenerating: Boolean = false,
     val activeScreen: ActiveScreen = ActiveScreen.CHAT,
     val routerConfig: RouterConfig = RouterConfig(),
@@ -50,7 +73,8 @@ data class AuraUiState(
     val routerStats: RouterStats = RouterStats(),
     val providerHealth: Map<String, ProviderHealth> = emptyMap(),
     val gatewayRunning: Boolean = false,
-    val gatewayStatusLog: String = "Stopped (127.0.0.1:8910)"
+    val gatewayStatusLog: String = "Stopped (127.0.0.1:8910)",
+    val providerTestStatus: String? = null
 ) {
     val activeProvider: ProviderConfig?
         get() = providers.firstOrNull { it.id == activeProviderId } ?: providers.firstOrNull()
@@ -68,6 +92,14 @@ data class AuraUiState(
 class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val store = LocalStore(application.applicationContext)
     private val router = AuraRouter()
+    private val hfClient = HuggingFaceClient()
+
+    private val _state = MutableStateFlow(AuraUiState())
+    val state: StateFlow<AuraUiState> = _state.asStateFlow()
+
+    private var activeJob: Job? = null
+    private var downloadJob: Job? = null
+
     private val gateway = LocalApiGateway(
         router = router,
         getProviders = { _state.value.providers },
@@ -77,14 +109,16 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(gatewayStatusLog = log, providerHealth = router.getHealthSnapshot()) }
         }
     )
-    private val _state = MutableStateFlow(AuraUiState())
-    val state: StateFlow<AuraUiState> = _state.asStateFlow()
-
-    private var activeJob: Job? = null
 
     private val skillExecutor = SkillExecutor(
-        getNotes = { _state.value.notes },
-        upsertNote = { key, value -> upsertNote(key, value) }
+        workspaceDir = store.workspaceDir,
+        getMemories = { _state.value.memories },
+        upsertMemory = { k, c, cat, tags -> upsertMemory(k, c, cat, tags) },
+        deleteMemoryByKey = { k -> deleteMemoryByKey(k) },
+        isToolCacheEnabled = { _state.value.routerConfig.toolMemoizationEnabled },
+        onToolCacheHit = {
+            _state.update { s -> s.copy(routerStats = s.routerStats.copy(toolCacheHits = s.routerStats.toolCacheHits + 1)) }
+        }
     )
 
     init {
@@ -97,8 +131,11 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             sessions = snap.sessions,
             activeSessionId = snap.sessions.firstOrNull()?.id,
             activeGemId = snap.sessions.firstOrNull()?.gemId,
-            notes = snap.notes,
-            darkMode = snap.darkMode,
+            memories = snap.memories,
+            soulMarkdown = snap.soulMarkdown,
+            userProfileMarkdown = snap.userProfileMarkdown,
+            localModels = snap.localModels.filter { File(it.localPath).exists() },
+            themePreset = snap.themePreset,
             routerConfig = snap.routerConfig,
             cacheEntries = snap.cacheEntries,
             routerStats = snap.routerStats
@@ -114,8 +151,11 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 gems = s.gems,
                 skills = s.skills,
                 sessions = s.sessions,
-                notes = s.notes,
-                darkMode = s.darkMode,
+                memories = s.memories,
+                soulMarkdown = s.soulMarkdown,
+                userProfileMarkdown = s.userProfileMarkdown,
+                localModels = s.localModels,
+                themePreset = s.themePreset,
                 routerConfig = s.routerConfig,
                 cacheEntries = s.cacheEntries,
                 routerStats = s.routerStats
@@ -124,12 +164,171 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: ActiveScreen) {
-        _state.update { it.copy(activeScreen = screen, providerHealth = router.getHealthSnapshot()) }
+        _state.update { it.copy(activeScreen = screen, providerHealth = router.getHealthSnapshot(), providerTestStatus = null) }
+        if (screen == ActiveScreen.LOCAL_MODELS && _state.value.hfSearchResults.isEmpty()) {
+            searchHuggingFace("")
+        }
     }
 
-    fun toggleDarkMode() {
-        _state.update { it.copy(darkMode = !it.darkMode) }
+    fun setThemePreset(preset: AppThemePreset) {
+        _state.update { it.copy(themePreset = preset) }
         persist()
+    }
+
+    fun updateSoulMarkdown(md: String) {
+        _state.update { it.copy(soulMarkdown = md) }
+        persist()
+    }
+
+    fun updateUserProfileMarkdown(md: String) {
+        _state.update { it.copy(userProfileMarkdown = md) }
+        persist()
+    }
+
+    fun upsertMemory(key: String, content: String, category: String = "general", tags: List<String> = emptyList(), pinned: Boolean = false) {
+        _state.update { s ->
+            val existing = s.memories.firstOrNull { it.key.equals(key, ignoreCase = true) }
+            val entry = (existing ?: MemoryEntry(key = key, content = content, category = category)).copy(
+                key = key.trim(),
+                content = content.trim(),
+                category = category.trim().ifBlank { "general" },
+                tags = tags,
+                pinned = pinned || (existing?.pinned ?: false),
+                updatedAt = System.currentTimeMillis()
+            )
+            val rest = s.memories.filterNot { it.key.equals(key, ignoreCase = true) }
+            s.copy(memories = listOf(entry) + rest)
+        }
+        persist()
+    }
+
+    fun toggleMemoryPin(id: String) {
+        _state.update { s ->
+            s.copy(memories = s.memories.map { if (it.id == id) it.copy(pinned = !it.pinned) else it })
+        }
+        persist()
+    }
+
+    fun deleteMemoryById(id: String) {
+        _state.update { s -> s.copy(memories = s.memories.filterNot { it.id == id }) }
+        persist()
+    }
+
+    private fun deleteMemoryByKey(key: String): Boolean {
+        val exists = _state.value.memories.any { it.key.equals(key, ignoreCase = true) }
+        if (exists) {
+            _state.update { s -> s.copy(memories = s.memories.filterNot { it.key.equals(key, ignoreCase = true) }) }
+            persist()
+        }
+        return exists
+    }
+
+    // --- Hugging Face Local Model Catalog & Downloader ---
+    fun searchHuggingFace(query: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(hfLoading = true, hfError = null, hfSelectedRepoId = null, hfSelectedRepoFiles = emptyList()) }
+            try {
+                val results = hfClient.searchGgufModels(query)
+                _state.update { it.copy(hfSearchResults = results, hfLoading = false) }
+            } catch (e: Exception) {
+                _state.update { it.copy(hfLoading = false, hfError = "HF Catalog error: ${e.message}") }
+            }
+        }
+    }
+
+    fun inspectHfRepo(repoId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(hfLoading = true, hfError = null, hfSelectedRepoId = repoId, hfSelectedRepoFiles = emptyList()) }
+            try {
+                val files = hfClient.listGgufFiles(repoId)
+                _state.update { it.copy(hfSelectedRepoFiles = files, hfLoading = false) }
+            } catch (e: Exception) {
+                _state.update { it.copy(hfLoading = false, hfError = "Failed to load GGUF files: ${e.message}") }
+            }
+        }
+    }
+
+    fun closeHfRepoInspect() {
+        _state.update { it.copy(hfSelectedRepoId = null, hfSelectedRepoFiles = emptyList()) }
+    }
+
+    fun downloadHfModel(repoId: String, file: HfGgufFile) {
+        if (_state.value.activeDownload != null) return
+        val safeFileName = file.path.substringAfterLast("/")
+        val destFile = File(store.modelsDir, safeFileName)
+        downloadJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    activeDownload = DownloadProgress(repoId, safeFileName, 0L, file.sizeBytes),
+                    hfError = null
+                )
+            }
+            try {
+                val saved = hfClient.downloadGguf(file, destFile) { dl, total ->
+                    _state.update {
+                        it.copy(activeDownload = DownloadProgress(repoId, safeFileName, dl, total))
+                    }
+                }
+                val model = DownloadedLocalModel(
+                    repoId = repoId,
+                    fileName = safeFileName,
+                    localPath = saved.absolutePath,
+                    sizeBytes = saved.length()
+                )
+                _state.update { s ->
+                    val rest = s.localModels.filterNot { it.localPath == model.localPath }
+                    s.copy(localModels = listOf(model) + rest, activeDownload = null)
+                }
+                persist()
+            } catch (e: Exception) {
+                _state.update { it.copy(activeDownload = null, hfError = "Download failed: ${e.message}") }
+            }
+        }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        _state.update { it.copy(activeDownload = null) }
+    }
+
+    fun deleteLocalModel(model: DownloadedLocalModel) {
+        runCatching { File(model.localPath).delete() }
+        _state.update { s -> s.copy(localModels = s.localModels.filterNot { it.id == model.id }) }
+        persist()
+    }
+
+    fun activateLocalModel(model: DownloadedLocalModel) {
+        val localProvider = _state.value.providers.firstOrNull { it.protocol == ApiProtocol.LOCAL_GGUF }
+            ?: ProviderConfig(
+                id = "local-gguf",
+                name = "Local GGUF (llama-server)",
+                protocol = ApiProtocol.LOCAL_GGUF,
+                baseUrl = "http://127.0.0.1:8080/v1",
+                apiKey = "local",
+                model = model.fileName
+            )
+        updateProvider(localProvider.copy(model = model.fileName))
+        navigateTo(ActiveScreen.CHAT)
+    }
+
+    fun testProviderConnection(provider: ProviderConfig) {
+        viewModelScope.launch {
+            _state.update { it.copy(providerTestStatus = "Testing ${provider.name}...") }
+            try {
+                val models = hfClient.probeLocalServer(provider.baseUrl, provider.apiKey)
+                val msg = if (models.isNotEmpty()) {
+                    "Connected! Found ${models.size} models (e.g. ${models.take(3).joinToString(", ")})"
+                } else {
+                    "Connected to ${provider.baseUrl} (OK)"
+                }
+                if (models.isNotEmpty()) {
+                    updateProvider(provider.copy(availableModels = models.take(25)))
+                }
+                _state.update { it.copy(providerTestStatus = msg) }
+            } catch (e: Exception) {
+                _state.update { it.copy(providerTestStatus = "Connection test failed: ${e.message}") }
+            }
+        }
     }
 
     fun updateRouterConfig(config: RouterConfig) {
@@ -153,6 +352,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearCache() {
+        AuraCacheEngine.clearToolMemo()
         _state.update { it.copy(cacheEntries = emptyList()) }
         persist()
     }
@@ -274,14 +474,6 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    private fun upsertNote(key: String, value: String) {
-        _state.update { s ->
-            val filtered = s.notes.filterNot { it.key.equals(key, ignoreCase = true) }
-            s.copy(notes = listOf(AgentNote(key, value)) + filtered)
-        }
-        persist()
-    }
-
     fun stopGeneration() {
         activeJob?.cancel()
         _state.update { s ->
@@ -305,7 +497,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         if (!hasAnyConfigured) {
             appendErrorSessionMessage(
                 prompt,
-                "No API key configured yet. Open API Providers & Settings from the drawer to add at least one provider key."
+                "No API key or local server configured yet. Open Settings or Local Models from the drawer."
             )
             return
         }
@@ -313,7 +505,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         val currentGem = snap.activeGem
         val gemId = currentGem?.id.orEmpty()
         val enabledSkills = resolveEnabledSkills(currentGem)
-        val systemPrompt = buildSystemPrompt(currentGem, enabledSkills)
+        val systemPrompt = buildSystemPrompt(currentGem, enabledSkills, prompt)
         val systemHash = AuraCacheEngine.sha256Short(systemPrompt)
 
         val priorContext = snap.activeSession?.messages
@@ -323,10 +515,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             .orEmpty()
         val contextHash = AuraCacheEngine.sha256Short(priorContext)
 
-        // Increment total requests stat
         _state.update { s -> s.copy(routerStats = s.routerStats.copy(totalRequests = s.routerStats.totalRequests + 1)) }
 
-        // Check Aura Multi-Layer Cache (Exact + Bilingual Semantic Similarity)
         if (!bypassCache) {
             val hit = AuraCacheEngine.lookup(
                 entries = _state.value.cacheEntries,
@@ -338,7 +528,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             )
             if (hit != null) {
                 val pct = (hit.similarityScore * 100).toInt().coerceIn(1, 100)
-                val badge = if (hit.isExact) "Exact Cache (0ms)" else "Semantic Cache ($pct% match)"
+                val scopeTag = if (hit.isCrossSession) "Global " else ""
+                val badge = if (hit.isExact) "${scopeTag}Exact Cache (0ms)" else "${scopeTag}Semantic Cache ($pct%)"
                 val savedTokens = AuraCacheEngine.estimateTokens(systemPrompt + prompt + hit.entry.response)
                 val userMsg = ChatMessage(role = "user", content = prompt)
                 val cachedReply = ChatMessage(
@@ -435,8 +626,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 var usedProviderLabel = ""
                 var anyFallback = false
 
+                // Hermes-inspired multi-step autonomous tool loop (up to 8 steps)
                 var round = 0
-                while (round < 5) {
+                while (round < 8) {
                     round++
                     val routed = router.completeWithRouting(
                         providers = _state.value.providers,
@@ -486,7 +678,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                                 toolName = tc.name,
                                 arguments = tc.argumentsJson,
                                 result = execResult.output,
-                                isError = execResult.isError
+                                isError = execResult.isError,
+                                fromCache = execResult.fromCache
                             )
                         )
                         updateAssistantMessage(
@@ -524,7 +717,6 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     routedBadge = usedProviderLabel
                 )
 
-                // Store non-tool answers in AuraCache for instant future hits
                 if (traces.isEmpty() && finalContent != "(No response returned)") {
                     _state.update { s ->
                         val newCache = AuraCacheEngine.putEntry(
@@ -540,11 +732,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                         val newStats = if (anyFallback) {
                             s.routerStats.copy(fallbackRecoveries = s.routerStats.fallbackRecoveries + 1)
                         } else s.routerStats
-                        s.copy(
-                            cacheEntries = newCache,
-                            routerStats = newStats,
-                            providerHealth = router.getHealthSnapshot()
-                        )
+                        s.copy(cacheEntries = newCache, routerStats = newStats, providerHealth = router.getHealthSnapshot())
                     }
                 } else {
                     _state.update { s ->
@@ -578,14 +766,43 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         return allSkills.filter { it.enabled || it.id in gemDefaults }
     }
 
-    private fun buildSystemPrompt(gem: Gem?, enabledSkills: List<AgentSkill>): String {
+    /**
+     * Hermes-inspired structured system prompt assembly:
+     * SOUL.md -> USER.md -> Pinned/Relevant Long-Term Memories -> Active Gem -> Prompt Skills.
+     */
+    private fun buildSystemPrompt(gem: Gem?, enabledSkills: List<AgentSkill>, prompt: String): String {
         val sb = StringBuilder()
+        val s = _state.value
+
+        if (s.soulMarkdown.isNotBlank()) {
+            sb.appendLine(s.soulMarkdown.trim())
+            sb.appendLine()
+        }
+        if (s.userProfileMarkdown.isNotBlank()) {
+            sb.appendLine(s.userProfileMarkdown.trim())
+            sb.appendLine()
+        }
+
+        // Inject pinned memories + top keyword-matched memories automatically
+        val normPrompt = AuraCacheEngine.normalizeText(prompt)
+        val promptWords = normPrompt.split(' ').filter { it.length >= 3 }.toSet()
+        val pinned = s.memories.filter { it.pinned }
+        val relevant = s.memories.filter { !it.pinned }.filter { mem ->
+            val hay = AuraCacheEngine.normalizeText("${mem.key} ${mem.content} ${mem.category}")
+            promptWords.any { hay.contains(it) }
+        }.take(6)
+        val injectedMemories = (pinned + relevant).distinctBy { it.id }.take(12)
+        if (injectedMemories.isNotEmpty()) {
+            sb.appendLine("# Active Long-Term Memory (MEMORY.md)")
+            for (m in injectedMemories) {
+                sb.appendLine("- [${m.category}] ${m.key}: ${m.content}")
+            }
+            sb.appendLine()
+        }
+
         if (gem != null && gem.instructions.isNotBlank()) {
             sb.appendLine("# Active Gem: ${gem.name}")
             sb.appendLine(gem.instructions.trim())
-            sb.appendLine()
-        } else {
-            sb.appendLine("You are Aura, a helpful, concise, and capable AI agent on Android.")
             sb.appendLine()
         }
 

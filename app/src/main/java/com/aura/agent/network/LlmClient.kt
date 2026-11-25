@@ -5,7 +5,7 @@ import com.aura.agent.data.ProviderConfig
 import com.aura.agent.skills.ToolSpec
 
 data class LlmTurnMessage(
-    val role: String, // "user", "assistant", "tool"
+    val role: String,
     val content: String = "",
     val toolCalls: List<LlmToolCall> = emptyList(),
     val toolCallId: String? = null,
@@ -40,7 +40,7 @@ object LlmClientFactory {
 
     fun forProtocol(protocol: ApiProtocol): LlmClient = when (protocol) {
         ApiProtocol.GEMINI -> gemini
-        ApiProtocol.OPENAI_COMPATIBLE -> openAi
+        ApiProtocol.OPENAI_COMPATIBLE, ApiProtocol.LOCAL_GGUF -> openAi
         ApiProtocol.ANTHROPIC -> anthropic
     }
 }

@@ -1,5 +1,6 @@
 package com.aura.agent.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -31,7 +33,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.aura.agent.data.ApiProtocol
+import com.aura.agent.data.AppThemePreset
 import com.aura.agent.data.ProviderConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,12 +55,14 @@ import com.aura.agent.data.ProviderConfig
 fun SettingsScreen(
     providers: List<ProviderConfig>,
     activeProviderId: String,
-    darkMode: Boolean,
+    themePreset: AppThemePreset,
+    testStatus: String?,
     onBack: () -> Unit,
-    onToggleDarkMode: () -> Unit,
+    onSelectTheme: (AppThemePreset) -> Unit,
     onSelectProvider: (String) -> Unit,
     onSaveProvider: (ProviderConfig) -> Unit,
-    onDeleteProvider: (String) -> Unit
+    onDeleteProvider: (String) -> Unit,
+    onTestProvider: (ProviderConfig) -> Unit
 ) {
     var editingProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var addingNew by remember { mutableStateOf(false) }
@@ -73,7 +77,7 @@ fun SettingsScreen(
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
-                title = { Text("API Providers & Settings") }
+                title = { Text("Providers & Appearance") }
             )
         },
         floatingActionButton = {
@@ -82,7 +86,7 @@ fun SettingsScreen(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = "Add Custom API")
+                Icon(Icons.Rounded.Add, contentDescription = "Add Custom Provider")
             }
         }
     ) { padding ->
@@ -96,32 +100,51 @@ fun SettingsScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(14.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Dark Theme", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Gemini charcoal dark surface",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Text("Theme Palette", style = MaterialTheme.typography.titleMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(AppThemePreset.entries) { preset ->
+                                FilterChip(
+                                    selected = themePreset == preset,
+                                    onClick = { onSelectTheme(preset) },
+                                    label = { Text(preset.label) }
+                                )
+                            }
                         }
-                        Switch(checked = darkMode, onCheckedChange = { onToggleDarkMode() })
+                    }
+                }
+            }
+
+            if (!testStatus.isNullOrBlank()) {
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = testStatus,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(12.dp)
+                        )
                     }
                 }
             }
 
             item {
                 Text(
-                    text = "Configured API Providers",
+                    text = "API Providers (Tap + to add any custom endpoint)",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 
@@ -129,12 +152,17 @@ fun SettingsScreen(
                 Surface(
                     onClick = { onSelectProvider(provider.id) },
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (provider.id == activeProviderId) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.padding(10.dp)
                     ) {
                         RadioButton(
                             selected = provider.id == activeProviderId,
@@ -148,10 +176,13 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = if (provider.apiKey.isBlank()) "API key not set" else "API key configured",
+                                text = if (provider.apiKey.isBlank()) "API key not set" else "Configured",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (provider.apiKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
+                        }
+                        IconButton(onClick = { onTestProvider(provider) }) {
+                            Icon(Icons.Rounded.NetworkCheck, contentDescription = "Test & Fetch Models")
                         }
                         IconButton(onClick = { editingProvider = provider }) {
                             Icon(Icons.Outlined.Edit, contentDescription = "Edit Provider")
@@ -194,11 +225,16 @@ private fun ProviderEditorDialog(
     var baseUrl by remember { mutableStateOf(initial?.baseUrl ?: "https://api.openai.com/v1") }
     var apiKey by remember { mutableStateOf(initial?.apiKey.orEmpty()) }
     var model by remember { mutableStateOf(initial?.model ?: "gpt-4o-mini") }
+    var headersRaw by remember {
+        mutableStateOf(
+            initial?.customHeaders?.entries?.joinToString("\n") { "${it.key}: ${it.value}" }.orEmpty()
+        )
+    }
     val presets = initial?.availableModels.orEmpty()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Add API Provider" else "Edit ${initial.name}") },
+        title = { Text(if (initial == null) "Add Manual Provider" else "Edit ${initial.name}") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -207,7 +243,7 @@ private fun ProviderEditorDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Display Name") },
+                    label = { Text("Provider Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -223,7 +259,7 @@ private fun ProviderEditorDialog(
                 OutlinedTextField(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },
-                    label = { Text("Base URL") },
+                    label = { Text("Base URL (e.g. https://.../v1)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -253,6 +289,14 @@ private fun ProviderEditorDialog(
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = headersRaw,
+                    onValueChange = { headersRaw = it },
+                    label = { Text("Custom Headers (Key: Value per line)") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(2.dp))
             }
         },
@@ -260,6 +304,12 @@ private fun ProviderEditorDialog(
             TextButton(
                 onClick = {
                     if (name.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank()) {
+                        val parsedHeaders = headersRaw.lines()
+                            .mapNotNull { line ->
+                                val idx = line.indexOf(':')
+                                if (idx > 0) line.substring(0, idx).trim() to line.substring(idx + 1).trim() else null
+                            }
+                            .toMap()
                         onSave(
                             (initial ?: ProviderConfig(
                                 name = name,
@@ -271,7 +321,8 @@ private fun ProviderEditorDialog(
                                 protocol = protocol,
                                 baseUrl = baseUrl.trim(),
                                 apiKey = apiKey.trim(),
-                                model = model.trim()
+                                model = model.trim(),
+                                customHeaders = parsedHeaders
                             )
                         )
                     }

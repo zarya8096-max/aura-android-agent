@@ -4,10 +4,19 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 @Serializable
+enum class AppThemePreset(val label: String, val isDark: Boolean) {
+    OBSIDIAN_GRAPHITE("Obsidian Graphite", true),
+    GEMINI_MIDNIGHT("Gemini Midnight", true),
+    WARM_ALABASTER("Warm Alabaster", false),
+    SAGE_TERMINAL("Sage Terminal", true)
+}
+
+@Serializable
 enum class ApiProtocol(val label: String) {
     GEMINI("Google Gemini"),
     OPENAI_COMPATIBLE("OpenAI-Compatible"),
-    ANTHROPIC("Anthropic Claude")
+    ANTHROPIC("Anthropic Claude"),
+    LOCAL_GGUF("Local GGUF Server")
 }
 
 @Serializable
@@ -24,9 +33,11 @@ data class RouterConfig(
     val enableFallback: Boolean = true,
     val exactCacheEnabled: Boolean = true,
     val semanticCacheEnabled: Boolean = true,
-    val semanticThreshold: Float = 0.84f,
-    val cacheTtlMinutes: Int = 1440,
-    val maxCacheEntries: Int = 250
+    val crossSessionCacheEnabled: Boolean = true,
+    val toolMemoizationEnabled: Boolean = true,
+    val semanticThreshold: Float = 0.80f,
+    val cacheTtlMinutes: Int = 2880,
+    val maxCacheEntries: Int = 500
 )
 
 @Serializable
@@ -39,6 +50,7 @@ data class CacheEntry(
     val originalPrompt: String,
     val response: String,
     val providerLabel: String,
+    val isStandalone: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val lastAccessedAt: Long = System.currentTimeMillis(),
     val hitCount: Int = 0
@@ -49,6 +61,7 @@ data class RouterStats(
     val totalRequests: Int = 0,
     val exactCacheHits: Int = 0,
     val semanticCacheHits: Int = 0,
+    val toolCacheHits: Int = 0,
     val fallbackRecoveries: Int = 0,
     val estimatedTokensSaved: Long = 0L
 ) {
@@ -78,7 +91,7 @@ data class Gem(
     val description: String,
     val instructions: String,
     val iconName: String = "sparkle",
-    val accentHex: Long = 0xFF8AB4F8,
+    val accentHex: Long = 0xFF7AB8FF,
     val defaultSkillIds: List<String> = emptyList(),
     val preferredProviderId: String? = null,
     val isBuiltIn: Boolean = false
@@ -107,11 +120,33 @@ data class AgentSkill(
 )
 
 @Serializable
+data class MemoryEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val key: String,
+    val content: String,
+    val category: String = "general", // profile, project, preference, finding, general
+    val tags: List<String> = emptyList(),
+    val pinned: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class DownloadedLocalModel(
+    val id: String = UUID.randomUUID().toString(),
+    val repoId: String,
+    val fileName: String,
+    val localPath: String,
+    val sizeBytes: Long,
+    val downloadedAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class ToolCallTrace(
     val toolName: String,
     val arguments: String,
     val result: String,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val fromCache: Boolean = false
 )
 
 @Serializable
@@ -138,21 +173,17 @@ data class ChatSession(
 )
 
 @Serializable
-data class AgentNote(
-    val key: String,
-    val value: String,
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Serializable
 data class AppStateSnapshot(
     val providers: List<ProviderConfig> = emptyList(),
     val activeProviderId: String = "",
     val gems: List<Gem> = emptyList(),
     val skills: List<AgentSkill> = emptyList(),
     val sessions: List<ChatSession> = emptyList(),
-    val notes: List<AgentNote> = emptyList(),
-    val darkMode: Boolean = true,
+    val memories: List<MemoryEntry> = emptyList(),
+    val soulMarkdown: String = "",
+    val userProfileMarkdown: String = "",
+    val localModels: List<DownloadedLocalModel> = emptyList(),
+    val themePreset: AppThemePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
     val routerConfig: RouterConfig = RouterConfig(),
     val cacheEntries: List<CacheEntry> = emptyList(),
     val routerStats: RouterStats = RouterStats()

@@ -6,7 +6,14 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 class LocalStore(context: Context) {
-    private val file = File(context.filesDir, "aura_agent_state.json")
+    val filesDir: File = context.filesDir
+    val workspaceDir: File = File(context.filesDir, "workspace").apply { mkdirs() }
+    val modelsDir: File = File(context.filesDir, "models").apply { mkdirs() }
+
+    private val stateFile = File(context.filesDir, "aura_agent_state_v3.json")
+    private val soulFile = File(context.filesDir, "SOUL.md")
+    private val userFile = File(context.filesDir, "USER.md")
+
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
@@ -14,12 +21,23 @@ class LocalStore(context: Context) {
     }
 
     fun load(): AppStateSnapshot {
-        if (!file.exists()) {
+        if (!stateFile.exists()) {
             return initialSnapshot()
         }
         return try {
-            val loaded = json.decodeFromString<AppStateSnapshot>(file.readText())
-            if (loaded.providers.isEmpty()) initialSnapshot() else loaded
+            val loaded = json.decodeFromString<AppStateSnapshot>(stateFile.readText())
+            val providers = if (loaded.providers.isEmpty()) Defaults.defaultProviders() else loaded.providers
+            val soul = loaded.soulMarkdown.ifBlank {
+                if (soulFile.exists()) soulFile.readText() else Defaults.DEFAULT_SOUL_MD
+            }
+            val userMd = loaded.userProfileMarkdown.ifBlank {
+                if (userFile.exists()) userFile.readText() else Defaults.DEFAULT_USER_MD
+            }
+            loaded.copy(
+                providers = providers,
+                soulMarkdown = soul,
+                userProfileMarkdown = userMd
+            )
         } catch (_: Exception) {
             initialSnapshot()
         }
@@ -27,7 +45,9 @@ class LocalStore(context: Context) {
 
     fun save(snapshot: AppStateSnapshot) {
         try {
-            file.writeText(json.encodeToString(snapshot))
+            stateFile.writeText(json.encodeToString(snapshot))
+            soulFile.writeText(snapshot.soulMarkdown)
+            userFile.writeText(snapshot.userProfileMarkdown)
         } catch (_: Exception) {
             // Ignore transient IO failures
         }
@@ -41,8 +61,11 @@ class LocalStore(context: Context) {
             gems = Defaults.defaultGems(),
             skills = Defaults.defaultSkills(),
             sessions = emptyList(),
-            notes = emptyList(),
-            darkMode = true
+            memories = emptyList(),
+            soulMarkdown = Defaults.DEFAULT_SOUL_MD,
+            userProfileMarkdown = Defaults.DEFAULT_USER_MD,
+            localModels = emptyList(),
+            themePreset = AppThemePreset.OBSIDIAN_GRAPHITE
         )
     }
 }

@@ -45,7 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -237,12 +237,9 @@ private fun EmptyGeminiHome(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = activeGem?.name ?: "Hello, Explorer",
-            style = TextStyle(
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Medium,
-                brush = Brush.linearGradient(GeminiGradientColors)
-            )
+            text = activeGem?.name ?: "Aura",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
@@ -264,8 +261,9 @@ private fun EmptyGeminiHome(
                 Surface(
                     onClick = { onLaunchGem(gem.id) },
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.width(172.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                    modifier = Modifier.width(176.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Box(
@@ -310,7 +308,8 @@ private fun EmptyGeminiHome(
                 Surface(
                     onClick = { onSuggestionClick(text) },
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(

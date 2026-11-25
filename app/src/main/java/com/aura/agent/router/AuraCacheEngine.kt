@@ -4,36 +4,71 @@ import com.aura.agent.data.CacheEntry
 import com.aura.agent.data.RouterConfig
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.sqrt
 
 data class CacheLookupResult(
     val entry: CacheEntry,
     val isExact: Boolean,
+    val isCrossSession: Boolean,
     val similarityScore: Float
 )
 
+private data class MemoizedToolOutput(
+    val output: String,
+    val isError: Boolean,
+    val expiresAtMs: Long
+)
+
 object AuraCacheEngine {
+    private val toolMemoCache = ConcurrentHashMap<String, MemoizedToolOutput>()
+
+    fun getMemoizedToolResult(toolName: String, argsJson: String): Pair<String, Boolean>? {
+        val key = "$toolName:${sha256Short(argsJson)}"
+        val hit = toolMemoCache[key] ?: return null
+        if (System.currentTimeMillis() > hit.expiresAtMs) {
+            toolMemoCache.remove(key)
+            return null
+        }
+        return hit.output to hit.isError
+    }
+
+    fun putMemoizedToolResult(toolName: String, argsJson: String, output: String, isError: Boolean, ttlSeconds: Long = 300L) {
+        if (isError) return
+        val key = "$toolName:${sha256Short(argsJson)}"
+        toolMemoCache[key] = MemoizedToolOutput(output, false, System.currentTimeMillis() + ttlSeconds * 1000L)
+    }
+
+    fun clearToolMemo() {
+        toolMemoCache.clear()
+    }
 
     /**
-     * Normalizes both English and Persian/Arabic text to maximize cache hit rates
-     * (unifies Arabic/Persian Yeh/Kaf, strips ZWNJ/diacritics, collapses whitespace and punctuation).
+     * Bilingual Persian/Arabic/English normalization for high cache hit rates.
      */
     fun normalizeText(raw: String): String {
-        val unified = raw
+        return raw
             .lowercase(Locale.ROOT)
             .replace('\u064A', '\u06CC') // Arabic Yeh -> Persian Yeh
             .replace('\u0643', '\u06A9') // Arabic Kaf -> Persian Kaf
+            .replace('\u0622', '\u0627') // Alef Madda -> Alef
+            .replace('\u0623', '\u0627') // Alef Hamza -> Alef
             .replace('\u200C', ' ')      // ZWNJ -> space
-            .replace(Regex("[\u064B-\u065F\u0670]"), "") // Strip Arabic diacritics
+            .replace(Regex("[\u064B-\u065F\u0670]"), "")
             .replace(Regex("[؟?!.,،؛:;\"'()\\[\\]{}]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
-        return unified
     }
 
     fun sha256Short(text: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
         return bytes.take(8).joinToString("") { "%02x".format(it) }
+    }
+
+    fun isStandaloneQuery(prompt: String): Boolean {
+        val norm = normalizeText(prompt)
+        val contextRefs = listOf("this", "that", "above", "it ", "این ", "اون ", "قبلی", "بالا", "ادامه")
+        return norm.length >= 10 && contextRefs.none { norm.contains(it) }
     }
 
     fun lookup(
@@ -50,42 +85,60 @@ object AuraCacheEngine {
         if (normPrompt.length < 3) return null
 
         val ttlMs = config.cacheTtlMinutes.toLong() * 60_000L
-        val validEntries = entries.filter { (nowMs - it.createdAt) <= ttlMs && it.gemId == gemId && it.systemHash == systemHash }
+        val validEntries = entries.filter { (nowMs - it.createdAt) <= ttlMs && it.gemId == gemId }
         if (validEntries.isEmpty()) return null
 
-        // Layer 1: Exact normalized match (same context)
+        val standalone = isStandaloneQuery(prompt)
+
+        // Tier 1a: Exact match in same context & system
         if (config.exactCacheEnabled) {
-            val exact = validEntries.firstOrNull {
-                it.contextHash == contextHash && it.normalizedPrompt == normPrompt
+            val exactSameCtx = validEntries.firstOrNull {
+                it.systemHash == systemHash && it.contextHash == contextHash && it.normalizedPrompt == normPrompt
             }
-            if (exact != null) {
-                return CacheLookupResult(exact, isExact = true, similarityScore = 1.0f)
+            if (exactSameCtx != null) {
+                return CacheLookupResult(exactSameCtx, isExact = true, isCrossSession = false, similarityScore = 1.0f)
+            }
+
+            // Tier 1b: Cross-session exact match for standalone prompts
+            if (config.crossSessionCacheEnabled && standalone) {
+                val exactGlobal = validEntries.firstOrNull {
+                    it.isStandalone && it.normalizedPrompt == normPrompt
+                }
+                if (exactGlobal != null) {
+                    return CacheLookupResult(exactGlobal, isExact = true, isCrossSession = true, similarityScore = 1.0f)
+                }
             }
         }
 
-        // Layer 2: Semantic / Fuzzy similarity match (word Jaccard + char 3-gram cosine)
-        if (config.semanticCacheEnabled && normPrompt.length >= 8) {
+        // Tier 2: Semantic / Fuzzy similarity (same context first, then cross-session for standalone queries)
+        if (config.semanticCacheEnabled && normPrompt.length >= 6) {
             val queryTokens = tokenize(normPrompt)
             val queryGrams = charTrigrams(normPrompt)
 
             var bestEntry: CacheEntry? = null
             var bestScore = 0f
+            var bestCross = false
 
             for (candidate in validEntries) {
-                if (candidate.contextHash != contextHash) continue
+                val sameCtx = candidate.contextHash == contextHash && candidate.systemHash == systemHash
+                val allowCross = config.crossSessionCacheEnabled && standalone && candidate.isStandalone
+                if (!sameCtx && !allowCross) continue
+
                 val score = hybridSimilarity(
                     queryTokens, queryGrams,
                     tokenize(candidate.normalizedPrompt),
                     charTrigrams(candidate.normalizedPrompt)
                 )
-                if (score >= config.semanticThreshold && score > bestScore) {
+                val required = if (sameCtx) config.semanticThreshold else (config.semanticThreshold + 0.03f).coerceAtMost(0.95f)
+                if (score >= required && score > bestScore) {
                     bestScore = score
                     bestEntry = candidate
+                    bestCross = !sameCtx
                 }
             }
 
             if (bestEntry != null) {
-                return CacheLookupResult(bestEntry, isExact = false, similarityScore = bestScore)
+                return CacheLookupResult(bestEntry, isExact = false, isCrossSession = bestCross, similarityScore = bestScore)
             }
         }
 
@@ -112,15 +165,15 @@ object AuraCacheEngine {
             normalizedPrompt = normPrompt,
             originalPrompt = prompt,
             response = response,
-            providerLabel = providerLabel
+            providerLabel = providerLabel,
+            isStandalone = isStandaloneQuery(prompt)
         )
         val deduplicated = existing.filterNot {
-            it.gemId == gemId && it.systemHash == systemHash &&
-                it.contextHash == contextHash && it.normalizedPrompt == normPrompt
+            it.gemId == gemId && it.contextHash == contextHash && it.normalizedPrompt == normPrompt
         }
         return (listOf(newEntry) + deduplicated)
             .sortedByDescending { it.lastAccessedAt }
-            .take(config.maxCacheEntries.coerceAtLeast(20))
+            .take(config.maxCacheEntries.coerceAtLeast(50))
     }
 
     fun estimateTokens(text: String): Long = (text.length / 4L).coerceAtLeast(1L)
@@ -150,9 +203,8 @@ object AuraCacheEngine {
             val union = t1.union(t2).size.toFloat()
             if (union == 0f) 0f else inter / union
         }
-
         val cosine = trigramCosine(g1, g2)
-        return (0.45f * jaccard) + (0.55f * cosine)
+        return (0.42f * jaccard) + (0.58f * cosine)
     }
 
     private fun trigramCosine(a: Map<String, Int>, b: Map<String, Int>): Float {

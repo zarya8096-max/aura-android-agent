@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -53,8 +56,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aura.agent.ui.components.SparkleIcon
+import com.aura.agent.ui.screens.AgentBrainScreen
 import com.aura.agent.ui.screens.ChatScreen
 import com.aura.agent.ui.screens.GemsScreen
+import com.aura.agent.ui.screens.LocalModelsScreen
 import com.aura.agent.ui.screens.RouterScreen
 import com.aura.agent.ui.screens.SettingsScreen
 import com.aura.agent.ui.screens.SkillsScreen
@@ -80,14 +85,14 @@ private fun AuraAppRoot(vm: AuraViewModel) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    AuraTheme(darkTheme = state.darkMode) {
+    AuraTheme(preset = state.themePreset) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = state.activeScreen == ActiveScreen.CHAT,
             drawerContent = {
                 ModalDrawerSheet(
                     drawerContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    modifier = Modifier.width(300.dp)
+                    modifier = Modifier.width(304.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -98,12 +103,12 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            SparkleIcon(size = 24.dp)
+                            SparkleIcon(size = 20.dp)
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Aura Agent", style = MaterialTheme.typography.titleLarge)
+                            Text("Aura", style = MaterialTheme.typography.titleLarge)
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Surface(
                             onClick = {
@@ -111,60 +116,35 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                 scope.launch { drawerState.close() }
                             },
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(50),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
                             ) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("New Chat", style = MaterialTheme.typography.titleMedium)
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Gems",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-
-                        state.gems.take(3).forEach { gem ->
-                            NavigationDrawerItem(
-                                label = { Text(gem.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                selected = state.activeGemId == gem.id && state.activeScreen == ActiveScreen.CHAT,
-                                onClick = {
-                                    vm.startNewChat(gem.id)
-                                    scope.launch { drawerState.close() }
-                                },
-                                icon = {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(gem.accentHex).copy(alpha = 0.22f))
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = Color(gem.accentHex),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                },
-                                colors = NavigationDrawerItemDefaults.colors(
-                                    unselectedContainerColor = Color.Transparent
-                                )
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         NavigationDrawerItem(
-                            label = { Text("Gem Manager") },
+                            label = { Text("Agent Brain (SOUL & Memory)") },
+                            selected = state.activeScreen == ActiveScreen.AGENT_BRAIN,
+                            onClick = {
+                                vm.navigateTo(ActiveScreen.AGENT_BRAIN)
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.Outlined.Psychology, contentDescription = null) },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
+                        )
+
+                        NavigationDrawerItem(
+                            label = { Text("Gems (${state.gems.size})") },
                             selected = state.activeScreen == ActiveScreen.GEMS,
                             onClick = {
                                 vm.navigateTo(ActiveScreen.GEMS)
@@ -182,6 +162,17 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                 scope.launch { drawerState.close() }
                             },
                             icon = { Icon(Icons.Rounded.Extension, contentDescription = null) },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
+                        )
+
+                        NavigationDrawerItem(
+                            label = { Text("Local Models · HF (${state.localModels.size})") },
+                            selected = state.activeScreen == ActiveScreen.LOCAL_MODELS,
+                            onClick = {
+                                vm.navigateTo(ActiveScreen.LOCAL_MODELS)
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.Outlined.Memory, contentDescription = null) },
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                         )
 
@@ -227,7 +218,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                         Icon(
                                             Icons.Outlined.ChatBubbleOutline,
                                             contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(17.dp)
                                         )
                                     },
                                     badge = {
@@ -238,13 +229,11 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                             Icon(
                                                 Icons.Outlined.Delete,
                                                 contentDescription = "Delete chat",
-                                                modifier = Modifier.size(16.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
                                     },
-                                    colors = NavigationDrawerItemDefaults.colors(
-                                        unselectedContainerColor = Color.Transparent
-                                    )
+                                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                                 )
                             }
                         }
@@ -252,7 +241,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                         NavigationDrawerItem(
-                            label = { Text("API Providers & Settings") },
+                            label = { Text("Providers & Appearance") },
                             selected = state.activeScreen == ActiveScreen.SETTINGS,
                             onClick = {
                                 vm.navigateTo(ActiveScreen.SETTINGS)
@@ -278,6 +267,34 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onOpenGems = { vm.navigateTo(ActiveScreen.GEMS) },
                         onOpenSkills = { vm.navigateTo(ActiveScreen.SKILLS) }
                     )
+                    ActiveScreen.AGENT_BRAIN -> AgentBrainScreen(
+                        soulMarkdown = state.soulMarkdown,
+                        userProfileMarkdown = state.userProfileMarkdown,
+                        memories = state.memories,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onSaveSoul = { vm.updateSoulMarkdown(it) },
+                        onSaveUserProfile = { vm.updateUserProfileMarkdown(it) },
+                        onAddMemory = { k, c, cat, pin -> vm.upsertMemory(k, c, cat, emptyList(), pin) },
+                        onTogglePin = { vm.toggleMemoryPin(it) },
+                        onDeleteMemory = { vm.deleteMemoryById(it) }
+                    )
+                    ActiveScreen.LOCAL_MODELS -> LocalModelsScreen(
+                        localModels = state.localModels,
+                        hfResults = state.hfSearchResults,
+                        selectedRepoId = state.hfSelectedRepoId,
+                        selectedRepoFiles = state.hfSelectedRepoFiles,
+                        loading = state.hfLoading,
+                        error = state.hfError,
+                        activeDownload = state.activeDownload,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onSearch = { vm.searchHuggingFace(it) },
+                        onInspectRepo = { vm.inspectHfRepo(it) },
+                        onCloseInspect = { vm.closeHfRepoInspect() },
+                        onDownloadFile = { repo, file -> vm.downloadHfModel(repo, file) },
+                        onCancelDownload = { vm.cancelDownload() },
+                        onActivateModel = { vm.activateLocalModel(it) },
+                        onDeleteModel = { vm.deleteLocalModel(it) }
+                    )
                     ActiveScreen.GEMS -> GemsScreen(
                         gems = state.gems,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
@@ -298,22 +315,24 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         cacheCount = state.cacheEntries.size,
                         providers = state.providers,
                         healthMap = state.providerHealth,
-                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
-                        onUpdateConfig = { vm.updateRouterConfig(it) },
                         gatewayRunning = state.gatewayRunning,
                         gatewayStatusLog = state.gatewayStatusLog,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onUpdateConfig = { vm.updateRouterConfig(it) },
                         onToggleGateway = { vm.toggleLocalGateway(it) },
                         onClearCache = { vm.clearCache() }
                     )
                     ActiveScreen.SETTINGS -> SettingsScreen(
                         providers = state.providers,
                         activeProviderId = state.activeProviderId,
-                        darkMode = state.darkMode,
+                        themePreset = state.themePreset,
+                        testStatus = state.providerTestStatus,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
-                        onToggleDarkMode = { vm.toggleDarkMode() },
+                        onSelectTheme = { vm.setThemePreset(it) },
                         onSelectProvider = { vm.selectProvider(it) },
                         onSaveProvider = { vm.updateProvider(it) },
-                        onDeleteProvider = { vm.deleteProvider(it) }
+                        onDeleteProvider = { vm.deleteProvider(it) },
+                        onTestProvider = { vm.testProviderConnection(it) }
                     )
                 }
             }

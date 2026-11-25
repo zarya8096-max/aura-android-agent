@@ -1,6 +1,25 @@
 package com.aura.agent.data
 
 object Defaults {
+    const val DEFAULT_SOUL_MD = """# SOUL.md — Core Agent Identity
+
+## Voice & Stance
+- Be direct, analytical, and grounded — act like a sharp peer collaborator, never a sycophantic assistant.
+- Challenge weak assumptions constructively when warranted instead of defaulting to automatic agreement.
+- Match the user's language naturally (Persian or English) with crisp formatting and zero filler.
+
+## Autonomous Execution (Hermes Principles)
+- Break complex requests into concrete tool calls before answering.
+- Proactively store enduring user preferences, project facts, and verified findings in structured memory using `memory_save`.
+- Before answering questions about past projects or preferences, check `memory_search`.
+- Use the local `file_workspace` scratchpad to save structured notes, scripts, or drafts when useful.
+"""
+
+    const val DEFAULT_USER_MD = """# USER.md — Personal Context
+- Preferred languages: Persian & English
+- Values clean, fast, low-overhead engineering and honest technical pushback.
+"""
+
     fun defaultProviders(): List<ProviderConfig> = listOf(
         ProviderConfig(
             id = "gemini",
@@ -8,11 +27,7 @@ object Defaults {
             protocol = ApiProtocol.GEMINI,
             baseUrl = "https://generativelanguage.googleapis.com/v1beta",
             model = "gemini-2.5-flash",
-            availableModels = listOf(
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-                "gemini-2.0-flash"
-            )
+            availableModels = listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash")
         ),
         ProviderConfig(
             id = "openrouter",
@@ -94,6 +109,15 @@ object Defaults {
             availableModels = listOf("llama-3.3-70b", "llama3.1-8b")
         ),
         ProviderConfig(
+            id = "local-gguf",
+            name = "Local GGUF (llama-server)",
+            protocol = ApiProtocol.LOCAL_GGUF,
+            baseUrl = "http://127.0.0.1:8080/v1",
+            apiKey = "local",
+            model = "local-model",
+            availableModels = listOf("local-model")
+        ),
+        ProviderConfig(
             id = "ollama",
             name = "Ollama / Local Server",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
@@ -106,78 +130,114 @@ object Defaults {
 
     fun defaultGems(): List<Gem> = listOf(
         Gem(
+            id = "gem-hermes",
+            name = "Hermes Autonomous",
+            description = "Full multi-step agent using memory, web search, HTTP fetch, and local workspace.",
+            instructions = "Operate as an autonomous Hermes-class agent. Plan multi-step tool execution, verify live facts via web_search/http_fetch, store key learnings in memory_save, and keep final replies concise.",
+            iconName = "hub",
+            accentHex = 0xFF7AB8FF,
+            defaultSkillIds = listOf("skill-http-fetch", "skill-web-search", "skill-memory", "skill-workspace", "skill-calculator", "skill-device-time"),
+            isBuiltIn = true
+        ),
+        Gem(
             id = "gem-coder",
-            name = "Coding Partner",
-            description = "Senior engineer for architecture, debugging, and clean code.",
-            instructions = "You are a pragmatic senior software engineer. Write clean, production-ready code, explain trade-offs concisely, and catch edge cases early. Match the user's language.",
+            name = "Systems Engineer",
+            description = "Clean architecture, debugging, code reviews, and zero-fluff solutions.",
+            instructions = "You are a pragmatic senior systems engineer. Write production-ready code, identify edge cases immediately, and explain trade-offs clearly.",
             iconName = "code",
-            accentHex = 0xFF8AB4F8,
-            defaultSkillIds = listOf("skill-http-fetch", "skill-calculator"),
+            accentHex = 0xFFE2C290,
+            defaultSkillIds = listOf("skill-http-fetch", "skill-workspace", "skill-json-query", "skill-text-tools"),
             isBuiltIn = true
         ),
         Gem(
             id = "gem-writer",
-            name = "Writing Editor",
-            description = "Polishes prose, structure, and tone without generic filler.",
-            instructions = "You are a sharp, thoughtful editor. Improve clarity, rhythm, and precision while preserving the user's authentic voice. Avoid corporate cliches and robotic phrasing.",
+            name = "Editorial Craft",
+            description = "Sharp, human prose without AI-slop cliches.",
+            instructions = "You are a ruthless, tasteful editor. Preserve the author's voice, cut filler, and avoid generic AI phrasing.",
             iconName = "edit",
-            accentHex = 0xFFC58AF9,
+            accentHex = 0xFF9EC5AB,
             isBuiltIn = true
         ),
         Gem(
-            id = "gem-brainstorm",
-            name = "Brainstormer",
-            description = "Generates creative angles, stress-tests ideas, and pushes back.",
-            instructions = "You are a creative strategist and critical thinker. Offer unexpected angles, challenge weak assumptions constructively, and organize ideas clearly.",
+            id = "gem-critic",
+            name = "Critical Sparring",
+            description = "Challenges assumptions and stress-tests technical or strategic ideas.",
+            instructions = "Play devil's advocate constructively. Spot hidden flaws, missing constraints, and weak reasoning before proposing stronger alternatives.",
             iconName = "lightbulb",
-            accentHex = 0xFFFDD663,
-            isBuiltIn = true
-        ),
-        Gem(
-            id = "gem-research",
-            name = "API & Web Agent",
-            description = "Uses HTTP fetch, memory notes, and calculator skills autonomously.",
-            instructions = "You are an autonomous Android AI agent. Proactively use your enabled tools (http_fetch, memory_save, memory_read, calculator, device_time) whenever live data, calculations, or persistent notes help answer accurately.",
-            iconName = "hub",
-            accentHex = 0xFF81C995,
-            defaultSkillIds = listOf("skill-http-fetch", "skill-calculator", "skill-device-time", "skill-memory"),
+            accentHex = 0xFFD98E73,
             isBuiltIn = true
         )
     )
 
     fun defaultSkills(): List<AgentSkill> = listOf(
         AgentSkill(
+            id = "skill-web-search",
+            name = "Web & Wiki Search",
+            slug = "web_search",
+            description = "Searches public DuckDuckGo Instant Answers and Wikipedia summaries for live facts.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
             id = "skill-http-fetch",
-            name = "HTTP / Web Fetch",
+            name = "HTTP / REST Fetch",
             slug = "http_fetch",
-            description = "Fetches JSON or text content from any public URL or REST API endpoint.",
-            type = SkillType.BUILTIN_TOOL,
-            enabled = true,
-            isBuiltIn = true
-        ),
-        AgentSkill(
-            id = "skill-calculator",
-            name = "Math Calculator",
-            slug = "calculator",
-            description = "Evaluates arithmetic expressions (+, -, *, /, ^, parentheses) accurately.",
-            type = SkillType.BUILTIN_TOOL,
-            enabled = true,
-            isBuiltIn = true
-        ),
-        AgentSkill(
-            id = "skill-device-time",
-            name = "Device Clock & Date",
-            slug = "device_time",
-            description = "Returns the Android device's current date, time, and timezone.",
+            description = "Calls public REST APIs or fetches webpage text (GET/POST) with automatic HTML stripping.",
             type = SkillType.BUILTIN_TOOL,
             enabled = true,
             isBuiltIn = true
         ),
         AgentSkill(
             id = "skill-memory",
-            name = "Persistent Memory Notes",
+            name = "Hermes Long-Term Memory",
             slug = "memory_notes",
-            description = "Lets the agent save, list, and retrieve key-value notes locally on your phone.",
+            description = "Structured memory_save, memory_search, and memory_delete tools across sessions.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
+            id = "skill-workspace",
+            name = "Local File Workspace",
+            slug = "file_workspace",
+            description = "Read, write, append, and list scratchpad files inside the app's local sandbox.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
+            id = "skill-calculator",
+            name = "Scientific Calculator",
+            slug = "calculator",
+            description = "Evaluates math expressions (+, -, *, /, ^, parentheses).",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
+            id = "skill-json-query",
+            name = "JSON Path Extractor",
+            slug = "json_query",
+            description = "Extracts nested fields or array items from raw JSON strings.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
+            id = "skill-text-tools",
+            name = "Crypto & Encoding Tools",
+            slug = "text_transform",
+            description = "Base64 encode/decode, SHA-256 hashing, URL encoding, and token/word counter.",
+            type = SkillType.BUILTIN_TOOL,
+            enabled = true,
+            isBuiltIn = true
+        ),
+        AgentSkill(
+            id = "skill-device-time",
+            name = "Device Clock & Timestamp",
+            slug = "device_time",
+            description = "Returns exact device date, time, timezone, and Unix epoch.",
             type = SkillType.BUILTIN_TOOL,
             enabled = true,
             isBuiltIn = true

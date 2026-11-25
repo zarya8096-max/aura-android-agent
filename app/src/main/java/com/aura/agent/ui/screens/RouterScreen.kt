@@ -132,6 +132,7 @@ fun RouterScreen(
                         ) {
                             StatPill("Exact Hits", "${stats.exactCacheHits}")
                             StatPill("Semantic Hits", "${stats.semanticCacheHits}")
+                            StatPill("Tool Hits", "${stats.toolCacheHits}")
                             StatPill("Fallbacks", "${stats.fallbackRecoveries}")
                             StatPill("Saved ~Tok", "${stats.estimatedTokensSaved}")
                         }
@@ -217,6 +218,18 @@ fun RouterScreen(
                             subtitle = "Matches rephrased prompts locally via trigram + token similarity",
                             checked = config.semanticCacheEnabled,
                             onCheckedChange = { onUpdateConfig(config.copy(semanticCacheEnabled = it)) }
+                        )
+                        ToggleRow(
+                            title = "Cross-Session Global Cache",
+                            subtitle = "Reuses standalone factual & coding answers across different chats",
+                            checked = config.crossSessionCacheEnabled,
+                            onCheckedChange = { onUpdateConfig(config.copy(crossSessionCacheEnabled = it)) }
+                        )
+                        ToggleRow(
+                            title = "Tool-Result Memoization",
+                            subtitle = "Caches repeated web_search, http_fetch & calculator tool outputs",
+                            checked = config.toolMemoizationEnabled,
+                            onCheckedChange = { onUpdateConfig(config.copy(toolMemoizationEnabled = it)) }
                         )
                         if (config.semanticCacheEnabled) {
                             Column {
