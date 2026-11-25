@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
+import com.aura.agent.network.SharedHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -53,10 +54,7 @@ class SkillExecutor(
     private val onToolCacheHit: () -> Unit,
     private val runSubagent: suspend (role: String, task: String) -> String
 ) {
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .build()
+    private val httpClient = SharedHttpClient.fastClient
 
     private val json = Json { ignoreUnknownKeys = true }
 

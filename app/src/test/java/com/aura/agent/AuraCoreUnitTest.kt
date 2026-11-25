@@ -176,4 +176,13 @@ class AuraCoreUnitTest {
         val gems = com.aura.agent.data.Defaults.defaultGems()
         assertTrue(gems.none { it.name.contains("Hermes", ignoreCase = true) })
     }
+
+    @Test
+    fun testSharedHttpClientPoolsAndZeroBrandLeaks() {
+        assertNotNull(com.aura.agent.network.SharedHttpClient.streamingClient)
+        assertNotNull(com.aura.agent.network.SharedHttpClient.fastClient)
+        val help = SlashCommandRegistry.helpMarkdown()
+        assertTrue(!help.contains("OpenBot", ignoreCase = true))
+        assertTrue(!help.contains("DeepSeek Harness", ignoreCase = true))
+    }
 }

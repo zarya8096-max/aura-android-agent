@@ -14,10 +14,7 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 object ModelCatalogService {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .build()
+    private val client = SharedHttpClient.fastClient
 
     private val json = Json { ignoreUnknownKeys = true }
 

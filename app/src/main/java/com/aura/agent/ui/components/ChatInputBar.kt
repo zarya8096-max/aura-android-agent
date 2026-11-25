@@ -274,7 +274,7 @@ fun ChatInputBar(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("SOUL.md Identity", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Inject agent persona & Hermes behavior rules",
+                            "Inject core agent persona & behavior rules",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import com.aura.agent.network.SharedHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -30,11 +31,7 @@ data class HfGgufFile(
 )
 
 class HuggingFaceClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+    private val client = SharedHttpClient.downloadClient
 
     private val json = Json { ignoreUnknownKeys = true }
 

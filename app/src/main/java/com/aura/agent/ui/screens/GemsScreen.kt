@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.rounded.Add
@@ -144,6 +145,17 @@ fun GemsScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                        IconButton(onClick = {
+                            onSaveGem(
+                                gem.copy(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    name = "${gem.name} Copy",
+                                    isBuiltIn = false
+                                )
+                            )
+                        }) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = "Duplicate Gem")
                         }
                         IconButton(onClick = { editingGem = gem }) {
                             Icon(Icons.Outlined.Edit, contentDescription = "Edit Gem")

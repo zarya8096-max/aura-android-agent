@@ -23,10 +23,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class AnthropicClient : LlmClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .build()
+    private val client = SharedHttpClient.streamingClient
 
     private val json = Json { ignoreUnknownKeys = true }
 

@@ -39,7 +39,9 @@ import com.aura.agent.router.AuraRouter
 import com.aura.agent.router.LocalApiGateway
 import com.aura.agent.router.ProviderHealth
 import com.aura.agent.skills.SkillExecutor
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -134,6 +136,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
     private var activeJob: Job? = null
     private var downloadJob: Job? = null
+    private var persistJob: Job? = null
 
     private val gateway = LocalApiGateway(
         router = router,
@@ -186,27 +189,30 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persist() {
         val s = _state.value
-        store.save(
-            AppStateSnapshot(
-                providers = s.providers,
-                activeProviderId = s.activeProviderId,
-                gems = s.gems,
-                skills = s.skills,
-                sessions = s.sessions,
-                memories = s.memories,
-                soulMarkdown = s.soulMarkdown,
-                userProfileMarkdown = s.userProfileMarkdown,
-                localModels = s.localModels,
-                themePreset = s.themePreset,
-                routerConfig = s.routerConfig,
-                cacheEntries = s.cacheEntries,
-                routerStats = s.routerStats,
-                globalApprovalMode = s.globalApprovalMode,
-                toolPolicies = s.toolPolicies,
-                auditLogs = s.auditLogs.take(100),
-                subagents = s.subagents
-            )
+        val snapshot = AppStateSnapshot(
+            providers = s.providers,
+            activeProviderId = s.activeProviderId,
+            gems = s.gems,
+            skills = s.skills,
+            sessions = s.sessions,
+            memories = s.memories,
+            soulMarkdown = s.soulMarkdown,
+            userProfileMarkdown = s.userProfileMarkdown,
+            localModels = s.localModels,
+            themePreset = s.themePreset,
+            routerConfig = s.routerConfig,
+            cacheEntries = s.cacheEntries,
+            routerStats = s.routerStats,
+            globalApprovalMode = s.globalApprovalMode,
+            toolPolicies = s.toolPolicies,
+            auditLogs = s.auditLogs.take(100),
+            subagents = s.subagents
         )
+        persistJob?.cancel()
+        persistJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(120L)
+            store.save(snapshot)
+        }
     }
 
     fun navigateTo(screen: ActiveScreen) {
@@ -855,6 +861,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 var totalIn = 0L
                 var totalOut = 0L
                 var totalCached = 0L
+                var lastUiFlushMs = 0L
 
                 val maxRounds = _state.value.effectiveReasoningEffort.maxToolSteps
                 var round = 0
@@ -871,15 +878,19 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                         sessionId = sessionId,
                         onDelta = { delta ->
                             streamedBuffer.append(delta)
-                            updateAssistantMessage(
-                                sessionId = sessionId,
-                                messageId = assistantMsg.id,
-                                content = streamedBuffer.toString(),
-                                traces = traces.toList(),
-                                streaming = true,
-                                isError = false,
-                                routedBadge = usedProviderLabel.ifBlank { null }
-                            )
+                            val now = System.currentTimeMillis()
+                            if (now - lastUiFlushMs >= 45L) {
+                                lastUiFlushMs = now
+                                updateAssistantMessage(
+                                    sessionId = sessionId,
+                                    messageId = assistantMsg.id,
+                                    content = streamedBuffer.toString(),
+                                    traces = traces.toList(),
+                                    streaming = true,
+                                    isError = false,
+                                    routedBadge = usedProviderLabel.ifBlank { null }
+                                )
+                            }
                         }
                     )
 
@@ -913,7 +924,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         val execResult = when (policy) {
                             ToolPermissionMode.DENY -> {
-                                recordAudit(tc.name, "DENIED", "Blocked by OpenBot Action Policy")
+                                recordAudit(tc.name, "DENIED", "Blocked by Action Policy")
                                 com.aura.agent.skills.ToolExecutionResult("Action blocked by user policy for tool '${tc.name}'.", isError = true)
                             }
                             ToolPermissionMode.ASK -> {
@@ -1044,7 +1055,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Hermes-inspired structured system prompt assembly:
+     * Aura structured system prompt assembly:
      * SOUL.md -> USER.md -> Pinned/Relevant Long-Term Memories -> Active Gem -> Prompt Skills.
      */
     private fun buildSystemPrompt(gem: Gem?, enabledSkills: List<AgentSkill>, prompt: String): String {

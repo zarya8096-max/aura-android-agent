@@ -25,8 +25,8 @@ object SlashCommandRegistry {
         SlashCommandSpec("/gateway", "/gateway [on|off]", "Start or stop Local OpenCode API Gateway (127.0.0.1:8910)"),
         SlashCommandSpec("/export", "/export", "Save current conversation as Markdown in local workspace"),
         SlashCommandSpec("/subagent", "/subagent <name> <task>", "Run a custom subagent directly with its assigned model & effort"),
-        SlashCommandSpec("/effort", "/effort [low|medium|high]", "Set DeepSeek Harness reasoning effort for this chat"),
-        SlashCommandSpec("/policy", "/policy [tool allow|ask|deny]", "View or set OpenBot tool permission policies"),
+        SlashCommandSpec("/effort", "/effort [low|medium|high]", "Set reasoning effort (Low / Medium / High) for this chat"),
+        SlashCommandSpec("/policy", "/policy [tool allow|ask|deny]", "View or set per-tool approval policies"),
         SlashCommandSpec("/help", "/help", "Show all available agent slash commands")
     )
 

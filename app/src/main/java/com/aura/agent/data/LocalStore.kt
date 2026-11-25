@@ -44,13 +44,26 @@ class LocalStore(context: Context) {
         }
     }
 
+    private val writeLock = Any()
+
     fun save(snapshot: AppStateSnapshot) {
-        try {
-            stateFile.writeText(json.encodeToString(snapshot))
-            soulFile.writeText(snapshot.soulMarkdown)
-            userFile.writeText(snapshot.userProfileMarkdown)
-        } catch (_: Exception) {
-            // Ignore transient IO failures
+        synchronized(writeLock) {
+            try {
+                atomicWrite(stateFile, json.encodeToString(snapshot))
+                atomicWrite(soulFile, snapshot.soulMarkdown)
+                atomicWrite(userFile, snapshot.userProfileMarkdown)
+            } catch (_: Exception) {
+                // Ignore transient IO failures
+            }
+        }
+    }
+
+    private fun atomicWrite(target: File, content: String) {
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        tmp.writeText(content)
+        if (!tmp.renameTo(target)) {
+            target.writeText(content)
+            tmp.delete()
         }
     }
 

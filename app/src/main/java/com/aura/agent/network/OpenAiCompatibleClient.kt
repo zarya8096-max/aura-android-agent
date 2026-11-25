@@ -3,6 +3,7 @@ package com.aura.agent.network
 import com.aura.agent.data.ProviderConfig
 import com.aura.agent.data.TokenUsage
 import kotlinx.serialization.json.longOrNull
+import com.aura.agent.router.AuraCacheEngine
 import com.aura.agent.skills.ToolSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,10 +26,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class OpenAiCompatibleClient : LlmClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .build()
+    private val client = SharedHttpClient.streamingClient
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -49,6 +47,9 @@ class OpenAiCompatibleClient : LlmClient {
             val urlLower = provider.baseUrl.lowercase()
             if (urlLower.contains("openai.com") || urlLower.contains("openrouter.ai") || urlLower.contains("deepseek.com") || urlLower.contains("nousresearch.com") || urlLower.contains("groq.com")) {
                 put("stream_options", buildJsonObject { put("include_usage", true) })
+            }
+            if (urlLower.contains("openai.com") && systemPrompt.isNotBlank()) {
+                put("prompt_cache_key", "aura_${AuraCacheEngine.sha256Short(systemPrompt)}")
             }
             put("messages", buildJsonArray {
                 if (systemPrompt.isNotBlank()) {
