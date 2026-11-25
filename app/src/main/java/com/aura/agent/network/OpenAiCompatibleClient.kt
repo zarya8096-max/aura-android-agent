@@ -1,6 +1,8 @@
 package com.aura.agent.network
 
 import com.aura.agent.data.ProviderConfig
+import com.aura.agent.data.TokenUsage
+import kotlinx.serialization.json.longOrNull
 import com.aura.agent.skills.ToolSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,6 +46,10 @@ class OpenAiCompatibleClient : LlmClient {
             put("temperature", provider.temperature.toDouble())
             put("max_tokens", provider.maxTokens)
             put("stream", true)
+            val urlLower = provider.baseUrl.lowercase()
+            if (urlLower.contains("openai.com") || urlLower.contains("openrouter.ai") || urlLower.contains("deepseek.com") || urlLower.contains("nousresearch.com") || urlLower.contains("groq.com")) {
+                put("stream_options", buildJsonObject { put("include_usage", true) })
+            }
             put("messages", buildJsonArray {
                 if (systemPrompt.isNotBlank()) {
                     add(buildJsonObject {
@@ -110,7 +116,10 @@ class OpenAiCompatibleClient : LlmClient {
         provider.customHeaders.forEach { (k, v) -> reqBuilder.header(k, v) }
 
         val fullText = StringBuilder()
-        val toolCallMap = linkedMapOf<Int, MutableList<String>>() // index -> [id, name, args]
+        val toolCallMap = linkedMapOf<Int, MutableList<String>>()
+        var inTok = 0L
+        var outTok = 0L
+        var cachedTok = 0L
 
         client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) {
@@ -127,6 +136,11 @@ class OpenAiCompatibleClient : LlmClient {
                     if (data == "[DONE]" || data.isBlank()) continue
 
                     val root = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
+                    root["usage"]?.jsonObject?.let { u ->
+                        u["prompt_tokens"]?.jsonPrimitive?.longOrNull?.let { inTok = it }
+                        u["completion_tokens"]?.jsonPrimitive?.longOrNull?.let { outTok = it }
+                        u["prompt_tokens_details"]?.jsonObject?.get("cached_tokens")?.jsonPrimitive?.longOrNull?.let { cachedTok = it }
+                    }
                     val choice = root["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: continue
                     val delta = choice["delta"]?.jsonObject ?: continue
 
@@ -162,6 +176,6 @@ class OpenAiCompatibleClient : LlmClient {
                 )
             }
 
-        LlmResponse(text = fullText.toString(), toolCalls = parsedCalls)
+        LlmResponse(text = fullText.toString(), toolCalls = parsedCalls, usage = TokenUsage(inTok, outTok, cachedTok))
     }
 }

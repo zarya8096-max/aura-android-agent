@@ -103,6 +103,16 @@ data class CacheEntry(
     val hitCount: Int = 0
 )
 
+
+@Serializable
+data class TokenUsage(
+    val inputTokens: Long = 0L,
+    val outputTokens: Long = 0L,
+    val cachedInputTokens: Long = 0L
+) {
+    val totalTokens: Long get() = inputTokens + outputTokens
+}
+
 @Serializable
 data class RouterStats(
     val totalRequests: Int = 0,
@@ -110,7 +120,10 @@ data class RouterStats(
     val semanticCacheHits: Int = 0,
     val toolCacheHits: Int = 0,
     val fallbackRecoveries: Int = 0,
-    val estimatedTokensSaved: Long = 0L
+    val estimatedTokensSaved: Long = 0L,
+    val totalInputTokens: Long = 0L,
+    val totalOutputTokens: Long = 0L,
+    val serverCachedTokens: Long = 0L
 ) {
     val totalCacheHits: Int get() = exactCacheHits + semanticCacheHits
     val hitRatePercent: Int
@@ -211,7 +224,8 @@ data class ChatMessage(
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
     val cacheHitBadge: String? = null,
-    val routedProviderBadge: String? = null
+    val routedProviderBadge: String? = null,
+    val tokenUsage: TokenUsage? = null
 )
 
 @Serializable

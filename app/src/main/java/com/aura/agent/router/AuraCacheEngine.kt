@@ -178,8 +178,16 @@ object AuraCacheEngine {
 
     fun estimateTokens(text: String): Long = (text.length / 4L).coerceAtLeast(1L)
 
-    private fun tokenize(norm: String): Set<String> =
-        norm.split(' ').filter { it.length >= 2 }.toSet()
+    private val stopwords = setOf(
+        "the", "a", "an", "is", "are", "to", "for", "of", "in", "on", "please", "can", "you", "me", "my",
+        "لطفا", "میشه", "برام", "بگو", "یک", "یه", "که", "از", "به", "در", "رو", "را", "این", "اون", "من"
+    )
+
+    private fun tokenize(norm: String): Set<String> {
+        val raw = norm.split(' ').filter { it.length >= 2 }
+        val filtered = raw.filterNot { it in stopwords }
+        return (if (filtered.isNotEmpty()) filtered else raw).toSet()
+    }
 
     private fun charTrigrams(norm: String): Map<String, Int> {
         val padded = " $norm "

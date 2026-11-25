@@ -1,6 +1,8 @@
 package com.aura.agent.network
 
 import com.aura.agent.data.ProviderConfig
+import com.aura.agent.data.TokenUsage
+import kotlinx.serialization.json.longOrNull
 import com.aura.agent.skills.ToolSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -121,6 +123,9 @@ class AnthropicClient : LlmClient {
 
         val fullText = StringBuilder()
         val toolUseBlocks = linkedMapOf<Int, MutableList<String>>()
+        var inTok = 0L
+        var outTok = 0L
+        var cachedTok = 0L
 
         client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) {
@@ -141,6 +146,15 @@ class AnthropicClient : LlmClient {
                     val index = root["index"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
 
                     when (type) {
+                        "message_start" -> {
+                            root["message"]?.jsonObject?.get("usage")?.jsonObject?.let { u ->
+                                u["input_tokens"]?.jsonPrimitive?.longOrNull?.let { inTok = it }
+                                u["cache_read_input_tokens"]?.jsonPrimitive?.longOrNull?.let { cachedTok = it }
+                            }
+                        }
+                        "message_delta" -> {
+                            root["usage"]?.jsonObject?.get("output_tokens")?.jsonPrimitive?.longOrNull?.let { outTok = it }
+                        }
                         "content_block_start" -> {
                             val cb = root["content_block"]?.jsonObject
                             if (cb?.get("type")?.jsonPrimitive?.contentOrNull == "tool_use") {
@@ -174,6 +188,6 @@ class AnthropicClient : LlmClient {
             .filter { it[1].isNotBlank() }
             .map { LlmToolCall(id = it[0], name = it[1], argumentsJson = it[2].ifBlank { "{}" }) }
 
-        LlmResponse(text = fullText.toString(), toolCalls = parsedTools)
+        LlmResponse(text = fullText.toString(), toolCalls = parsedTools, usage = TokenUsage(inTok, outTok, cachedTok))
     }
 }

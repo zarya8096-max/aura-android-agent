@@ -2,6 +2,7 @@ package com.aura.agent.network
 
 import com.aura.agent.data.ApiProtocol
 import com.aura.agent.data.ProviderConfig
+import com.aura.agent.data.TokenUsage
 import com.aura.agent.skills.ToolSpec
 
 data class LlmTurnMessage(
@@ -20,7 +21,8 @@ data class LlmToolCall(
 
 data class LlmResponse(
     val text: String,
-    val toolCalls: List<LlmToolCall> = emptyList()
+    val toolCalls: List<LlmToolCall> = emptyList(),
+    val usage: TokenUsage = TokenUsage()
 )
 
 interface LlmClient {

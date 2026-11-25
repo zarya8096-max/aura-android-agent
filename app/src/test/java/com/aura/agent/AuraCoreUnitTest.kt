@@ -124,4 +124,32 @@ class AuraCoreUnitTest {
         assertTrue("/remember" in cmds)
         assertTrue(SlashCommandRegistry.filter("/co").any { it.command == "/compact" })
     }
+
+    @Test
+    fun testPersianStopwordTolerantSemanticCacheHit() {
+        val cfg = RouterConfig(
+            exactCacheEnabled = true,
+            semanticCacheEnabled = true,
+            crossSessionCacheEnabled = true,
+            semanticThreshold = 0.72f
+        )
+        val sysHash = AuraCacheEngine.sha256Short("sys")
+        val ctx = AuraCacheEngine.sha256Short("ctx")
+        val entries = AuraCacheEngine.putEntry(
+            existing = emptyList(),
+            config = cfg,
+            gemId = "",
+            systemHash = sysHash,
+            contextHash = ctx,
+            prompt = "تفاوت coroutine و thread در کاتلین چیه؟",
+            response = "کوروتین‌ها سبک‌تر از ترد هستند.",
+            providerLabel = "Gemini"
+        )
+        val hit = AuraCacheEngine.lookup(
+            entries, cfg, "", sysHash, ctx,
+            "لطفا برام بگو تفاوت coroutine و thread در کاتلین چیه"
+        )
+        assertNotNull(hit)
+        assertTrue(hit!!.similarityScore >= 0.72f)
+    }
 }

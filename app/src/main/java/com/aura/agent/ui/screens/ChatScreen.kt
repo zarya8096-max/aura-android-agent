@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aura.agent.data.Gem
+import com.aura.agent.data.ReasoningEffort
 import com.aura.agent.ui.components.ChatInputBar
 import com.aura.agent.ui.components.MessageItem
 import com.aura.agent.ui.components.SparkleIcon
@@ -75,7 +76,7 @@ fun ChatScreen(
     onLaunchGem: (String) -> Unit,
     onToggleSoulMd: () -> Unit,
     onToggleMemoryMd: () -> Unit,
-    onCycleEffort: () -> Unit,
+    onSelectEffort: (ReasoningEffort) -> Unit,
     onRespondApproval: (Boolean) -> Unit,
     onOpenGems: () -> Unit,
     onOpenSkills: () -> Unit
@@ -195,7 +196,7 @@ fun ChatScreen(
                 reasoningEffort = state.effectiveReasoningEffort,
                 onToggleSoulMd = onToggleSoulMd,
                 onToggleMemoryMd = onToggleMemoryMd,
-                onCycleEffort = onCycleEffort,
+                onSelectEffort = onSelectEffort,
                 onOpenSkills = onOpenSkills,
                 onOpenGems = onOpenGems
             )

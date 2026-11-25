@@ -30,6 +30,34 @@ object Defaults {
             availableModels = listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash")
         ),
         ProviderConfig(
+            id = "nous-portal",
+            name = "Nous Portal (Hermes API)",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://inference-api.nousresearch.com/v1",
+            model = "Hermes-3-Llama-3.1-70B",
+            availableModels = listOf(
+                "Hermes-3-Llama-3.1-70B",
+                "Hermes-3-Llama-3.1-405B",
+                "DeepHermes-3-Llama-3-8B-Preview"
+            )
+        ),
+        ProviderConfig(
+            id = "openai-codex",
+            name = "OpenAI Codex",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.openai.com/v1",
+            model = "codex-mini-latest",
+            availableModels = listOf("codex-mini-latest", "o4-mini", "gpt-4.1", "gpt-4o")
+        ),
+        ProviderConfig(
+            id = "google-antigravity",
+            name = "Google Antigravity / Gemini",
+            protocol = ApiProtocol.GEMINI,
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
+            model = "gemini-2.5-pro",
+            availableModels = listOf("gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash")
+        ),
+        ProviderConfig(
             id = "openrouter",
             name = "OpenRouter (200+ Models & Free Tier)",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,

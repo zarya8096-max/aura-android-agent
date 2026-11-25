@@ -66,7 +66,7 @@ fun ChatInputBar(
     reasoningEffort: ReasoningEffort,
     onToggleSoulMd: () -> Unit,
     onToggleMemoryMd: () -> Unit,
-    onCycleEffort: () -> Unit,
+    onSelectEffort: (ReasoningEffort) -> Unit,
     onOpenSkills: () -> Unit,
     onOpenGems: () -> Unit
 ) {
@@ -304,17 +304,7 @@ fun ChatInputBar(
                         ReasoningEffort.entries.forEach { eff ->
                             FilterChip(
                                 selected = reasoningEffort == eff,
-                                onClick = {
-                                    if (reasoningEffort != eff) {
-                                        // Cycle until matching
-                                        var tries = 0
-                                        while (tries < 3) {
-                                            onCycleEffort()
-                                            tries++
-                                            break
-                                        }
-                                    }
-                                },
+                                onClick = { onSelectEffort(eff) },
                                 label = { Text("${eff.label} (${eff.maxToolSteps} steps)") }
                             )
                         }

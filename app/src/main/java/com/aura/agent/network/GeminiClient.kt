@@ -1,6 +1,8 @@
 package com.aura.agent.network
 
 import com.aura.agent.data.ProviderConfig
+import com.aura.agent.data.TokenUsage
+import kotlinx.serialization.json.longOrNull
 import com.aura.agent.skills.ToolSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -121,6 +123,9 @@ class GeminiClient : LlmClient {
 
         val fullText = StringBuilder()
         val toolCalls = mutableListOf<LlmToolCall>()
+        var inTok = 0L
+        var outTok = 0L
+        var cachedTok = 0L
 
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
@@ -137,6 +142,11 @@ class GeminiClient : LlmClient {
                     if (data.isBlank()) continue
 
                     val root = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
+                    root["usageMetadata"]?.jsonObject?.let { u ->
+                        u["promptTokenCount"]?.jsonPrimitive?.longOrNull?.let { inTok = it }
+                        u["candidatesTokenCount"]?.jsonPrimitive?.longOrNull?.let { outTok = it }
+                        u["cachedContentTokenCount"]?.jsonPrimitive?.longOrNull?.let { cachedTok = it }
+                    }
                     val parts = root["candidates"]?.jsonArray?.firstOrNull()
                         ?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray ?: continue
 
@@ -166,6 +176,6 @@ class GeminiClient : LlmClient {
             }
         }
 
-        LlmResponse(text = fullText.toString(), toolCalls = toolCalls)
+        LlmResponse(text = fullText.toString(), toolCalls = toolCalls, usage = TokenUsage(inTok, outTok, cachedTok))
     }
 }

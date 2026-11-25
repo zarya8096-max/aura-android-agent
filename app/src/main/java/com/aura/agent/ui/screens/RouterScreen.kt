@@ -92,7 +92,7 @@ fun RouterScreen(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         ToggleRow(
-                            title = "Local API Aggregator (OpenCode / CLI)",
+                            title = "Local API Gateway (OpenCode / Cursor / CLI)",
                             subtitle = "OpenAI-compatible endpoint: http://127.0.0.1:8910/v1 (model: aura/auto)",
                             checked = gatewayRunning,
                             onCheckedChange = onToggleGateway
@@ -130,11 +130,20 @@ fun RouterScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            StatPill("Exact Hits", "${stats.exactCacheHits}")
-                            StatPill("Semantic Hits", "${stats.semanticCacheHits}")
-                            StatPill("Tool Hits", "${stats.toolCacheHits}")
+                            StatPill("Exact", "${stats.exactCacheHits}")
+                            StatPill("Semantic", "${stats.semanticCacheHits}")
+                            StatPill("Tool", "${stats.toolCacheHits}")
                             StatPill("Fallbacks", "${stats.fallbackRecoveries}")
-                            StatPill("Saved ~Tok", "${stats.estimatedTokensSaved}")
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            StatPill("Input Tok", "${stats.totalInputTokens}")
+                            StatPill("Output Tok", "${stats.totalOutputTokens}")
+                            StatPill("API Cached", "${stats.serverCachedTokens}")
+                            StatPill("Local Saved", "${stats.estimatedTokensSaved}")
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(

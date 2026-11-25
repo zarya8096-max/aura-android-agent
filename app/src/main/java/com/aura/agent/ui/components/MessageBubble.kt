@@ -151,9 +151,16 @@ private fun AssistantMessageBlock(message: ChatMessage) {
                                 )
                             }
                         }
-                        if (!message.routedProviderBadge.isNullOrBlank()) {
+                        val metaParts = buildList {
+                            if (!message.routedProviderBadge.isNullOrBlank()) add(message.routedProviderBadge)
+                            message.tokenUsage?.let { u ->
+                                val cachedStr = if (u.cachedInputTokens > 0L) " · ${u.cachedInputTokens} cached" else ""
+                                add("${u.inputTokens} in / ${u.outputTokens} out$cachedStr")
+                            }
+                        }
+                        if (metaParts.isNotEmpty()) {
                             Text(
-                                text = message.routedProviderBadge,
+                                text = metaParts.joinToString(" · "),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

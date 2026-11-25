@@ -13,8 +13,8 @@ android {
         applicationId = "com.aura.agent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "4.0.0"
+        versionCode = 9
+        versionName = "4.1.0"
 
         vectorDrawables {
             useSupportLibrary = true

@@ -27,6 +27,7 @@ import com.aura.agent.data.ProviderConfig
 import com.aura.agent.data.RouterConfig
 import com.aura.agent.data.RouterStats
 import com.aura.agent.data.SkillType
+import com.aura.agent.data.TokenUsage
 import com.aura.agent.data.ToolCallTrace
 import com.aura.agent.hf.HfGgufFile
 import com.aura.agent.hf.HfModelSummary
@@ -821,6 +822,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 val streamedBuffer = StringBuilder()
                 var usedProviderLabel = ""
                 var anyFallback = false
+                var totalIn = 0L
+                var totalOut = 0L
+                var totalCached = 0L
 
                 val maxRounds = _state.value.effectiveReasoningEffort.maxToolSteps
                 var round = 0
@@ -850,6 +854,9 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
                     usedProviderLabel = "${routed.usedProvider.name} · ${routed.usedProvider.model}" +
                         if (routed.fallbackTriggered) " (Fallback)" else ""
+                    totalIn += routed.response.usage.inputTokens
+                    totalOut += routed.response.usage.outputTokens
+                    totalCached += routed.response.usage.cachedInputTokens
                     if (routed.fallbackTriggered) anyFallback = true
 
                     if (routed.response.toolCalls.isEmpty()) {
@@ -931,6 +938,11 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val finalContent = streamedBuffer.toString().ifBlank { "(No response returned)" }
+                val finalUsage = TokenUsage(
+                    inputTokens = if (totalIn > 0L) totalIn else AuraCacheEngine.estimateTokens(systemPrompt + prompt),
+                    outputTokens = if (totalOut > 0L) totalOut else AuraCacheEngine.estimateTokens(finalContent),
+                    cachedInputTokens = totalCached
+                )
                 updateAssistantMessage(
                     sessionId = sessionId,
                     messageId = assistantMsg.id,
@@ -938,8 +950,18 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     traces = traces.toList(),
                     streaming = false,
                     isError = false,
-                    routedBadge = usedProviderLabel
+                    routedBadge = usedProviderLabel,
+                    usage = finalUsage
                 )
+                _state.update { s ->
+                    s.copy(
+                        routerStats = s.routerStats.copy(
+                            totalInputTokens = s.routerStats.totalInputTokens + finalUsage.inputTokens,
+                            totalOutputTokens = s.routerStats.totalOutputTokens + finalUsage.outputTokens,
+                            serverCachedTokens = s.routerStats.serverCachedTokens + finalUsage.cachedInputTokens
+                        )
+                    )
+                }
 
                 if (traces.isEmpty() && finalContent != "(No response returned)") {
                     _state.update { s ->
@@ -1069,7 +1091,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         traces: List<ToolCallTrace>,
         streaming: Boolean,
         isError: Boolean,
-        routedBadge: String?
+        routedBadge: String?,
+        usage: TokenUsage? = null
     ) {
         _state.update { s ->
             s.copy(
@@ -1083,7 +1106,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                                         toolTraces = traces,
                                         isStreaming = streaming,
                                         isError = isError,
-                                        routedProviderBadge = routedBadge
+                                        routedProviderBadge = routedBadge,
+                                        tokenUsage = usage ?: msg.tokenUsage
                                     )
                                 } else msg
                             }
