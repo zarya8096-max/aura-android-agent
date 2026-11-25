@@ -194,5 +194,9 @@ class AuraCoreUnitTest {
         assertTrue(!com.aura.agent.channels.TelegramBotBridge.isChatAllowed(999L, "eve", "12345, @bob"))
         val chunks = com.aura.agent.channels.TelegramBotBridge.chunkTelegramText("A".repeat(8000), 3900)
         assertEquals(3, chunks.size)
+        val (cmd, arg) = com.aura.agent.channels.TelegramBotBridge.normalizeTelegramCommand("/model@my_aura_bot gemini")
+        assertEquals("/model", cmd)
+        assertEquals("gemini", arg)
+        assertTrue(com.aura.agent.channels.TelegramBotBridge.telegramCommands.any { it.first == "compact" })
     }
 }

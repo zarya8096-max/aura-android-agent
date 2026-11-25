@@ -11,6 +11,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -55,6 +56,28 @@ class TelegramBotBridge(
         }
     }
 
+
+    suspend fun syncBotCommands(token: String, baseUrl: String = "https://api.telegram.org"): Boolean = withContext(Dispatchers.IO) {
+        val cleanBase = baseUrl.trimEnd('/').ifBlank { "https://api.telegram.org" }
+        val payload = buildJsonObject {
+            put("commands", buildJsonArray {
+                telegramCommands.forEach { (cmd, desc) ->
+                    add(buildJsonObject {
+                        put("command", cmd)
+                        put("description", desc)
+                    })
+                }
+            })
+        }.toString()
+        val req = Request.Builder()
+            .url("$cleanBase/bot${token.trim()}/setMyCommands")
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        fastClient.newCall(req).execute().use { resp ->
+            resp.isSuccessful
+        }
+    }
+
     fun start(): Boolean {
         if (isRunning) return true
         val cfg = getConfig()
@@ -65,6 +88,12 @@ class TelegramBotBridge(
         isRunning = true
         onLog("Starting Telegram polling loop...")
         pollJob = scope.launch {
+            runCatching {
+                val initCfg = getConfig()
+                if (syncBotCommands(initCfg.botToken, initCfg.apiBaseUrl)) {
+                    onLog("Synced ${telegramCommands.size} slash commands to Telegram menu.")
+                }
+            }
             while (isActive && isRunning) {
                 try {
                     val currentCfg = getConfig()
@@ -163,6 +192,30 @@ class TelegramBotBridge(
     }
 
     companion object {
+        val telegramCommands: List<Pair<String, String>> = listOf(
+            "start" to "Connect & welcome message",
+            "help" to "List all Aura Telegram commands",
+            "compact" to "Compress & summarize chat context",
+            "clear" to "Reset this Telegram conversation",
+            "model" to "Show or switch active API model",
+            "gem" to "Show or switch active Gem",
+            "effort" to "Set thinking effort (low/medium/high)",
+            "soul" to "Toggle or view SOUL.md",
+            "memory" to "Search long-term memory",
+            "remember" to "Save fact to memory (key: fact)",
+            "skills" to "List enabled agent tools & skills",
+            "status" to "Provider, token usage & cache stats",
+            "cache" to "Show cache stats or /cache clear",
+            "nocache" to "Ask directly bypassing local cache"
+        )
+
+        fun normalizeTelegramCommand(raw: String): Pair<String, String> {
+            val parts = raw.trim().split(Regex("\\s+"), limit = 2)
+            val baseCmd = parts[0].substringBefore("@").lowercase()
+            val arg = parts.getOrNull(1)?.trim().orEmpty()
+            return baseCmd to arg
+        }
+
         fun isChatAllowed(chatId: Long, username: String, allowListRaw: String): Boolean {
             val entries = allowListRaw
                 .split(',', ' ', '\n')

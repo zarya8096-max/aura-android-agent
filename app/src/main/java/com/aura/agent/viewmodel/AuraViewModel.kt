@@ -587,6 +587,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { s -> s.copy(telegramLogs = (listOf("Verifying token...") + s.telegramLogs).take(60)) }
             try {
                 val username = telegramBridge.verifyToken(cfg.botToken, cfg.apiBaseUrl)
+                runCatching { telegramBridge.syncBotCommands(cfg.botToken, cfg.apiBaseUrl) }
                 _state.update { s ->
                     s.copy(
                         telegramConfig = s.telegramConfig.copy(botUsername = username),
@@ -611,16 +612,126 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun handleTelegramIncoming(chatId: Long, text: String): String {
-        val trimmed = text.trim()
-        when (trimmed.lowercase()) {
-            "/start" -> return "Aura Agent is connected! Send any question, or use /clear to reset context and /status for router stats."
-            "/clear" -> {
-                telegramHistories.remove(chatId)
-                return "Telegram chat context cleared."
-            }
-            "/status" -> {
-                val s = _state.value
-                return "Aura Active Provider: ${s.activeProvider?.name} (${s.activeProvider?.model})\nCache Hit Rate: ${s.routerStats.hitRatePercent}% | Saved Tokens: ~${s.routerStats.estimatedTokensSaved}"
+        var trimmed = text.trim()
+        var bypassCache = false
+        if (trimmed.startsWith("/")) {
+            val (cmd, arg) = TelegramBotBridge.normalizeTelegramCommand(trimmed)
+            when (cmd) {
+                "/start" -> return "Aura Agent connected! Tap the '/' menu button to see all commands, or send any question."
+                "/help" -> return TelegramBotBridge.telegramCommands.joinToString("\n") { "/${it.first} — ${it.second}" }
+                "/clear" -> {
+                    telegramHistories.remove(chatId)
+                    return "Telegram chat history cleared."
+                }
+                "/status" -> {
+                    val st = _state.value
+                    val kvPct = if (st.routerStats.totalInputTokens > 0) ((st.routerStats.serverCachedTokens * 100L) / st.routerStats.totalInputTokens).toInt() else 0
+                    return "Aura Status:\n- Provider: ${st.activeProvider?.name} (${st.activeProvider?.model})\n- Gem: ${st.activeGem?.name ?: "Default"}\n- Effort: ${st.effectiveReasoningEffort.label}\n- Local Cache Hit: ${st.routerStats.hitRatePercent}% | KV Prefix: $kvPct%\n- Tokens: ${st.routerStats.totalInputTokens} in / ${st.routerStats.totalOutputTokens} out (~${st.routerStats.estimatedTokensSaved} saved)"
+                }
+                "/model" -> {
+                    val st = _state.value
+                    if (arg.isBlank()) {
+                        return "Providers:\n" + st.providers.joinToString("\n") { p ->
+                            val mark = if (p.id == st.activeProviderId) " *" else ""
+                            "- ${p.name}: ${p.model}$mark"
+                        } + "\n\nUse /model <name> to switch."
+                    }
+                    val match = st.providers.firstOrNull {
+                        it.name.contains(arg, ignoreCase = true) || it.id.contains(arg, ignoreCase = true) || it.model.contains(arg, ignoreCase = true)
+                    }
+                    return if (match != null) {
+                        selectProvider(match.id)
+                        "Switched to ${match.name} (${match.model})."
+                    } else "No provider matching '$arg'."
+                }
+                "/gem" -> {
+                    val st = _state.value
+                    if (arg.isBlank()) {
+                        return "Gems:\n" + st.gems.joinToString("\n") { "- ${it.name}: ${it.description}" } + "\n\nUse /gem <name> or /gem off."
+                    }
+                    if (arg.equals("off", ignoreCase = true)) {
+                        _state.update { it.copy(activeGemId = null) }
+                        return "Active Gem cleared."
+                    }
+                    val match = st.gems.firstOrNull { it.name.contains(arg, ignoreCase = true) }
+                    return if (match != null) {
+                        _state.update { it.copy(activeGemId = match.id) }
+                        "Activated Gem: ${match.name}"
+                    } else "No Gem matching '$arg'."
+                }
+                "/effort" -> {
+                    val eff = when (arg.lowercase()) {
+                        "low" -> ReasoningEffort.LOW
+                        "medium", "med" -> ReasoningEffort.MEDIUM
+                        "high" -> ReasoningEffort.HIGH
+                        else -> null
+                    }
+                    return if (eff != null) {
+                        setReasoningEffort(eff)
+                        "Reasoning effort set to ${eff.label} (max ${eff.maxToolSteps} steps)."
+                    } else "Current effort: ${_state.value.effectiveReasoningEffort.label}. Use /effort low|medium|high."
+                }
+                "/soul" -> {
+                    return if (arg.equals("toggle", ignoreCase = true)) {
+                        toggleChatSoulMd()
+                        "SOUL.md is now ${if (_state.value.effectiveUseSoulMd) "ON" else "OFF"}."
+                    } else {
+                        "SOUL.md (${if (_state.value.effectiveUseSoulMd) "ON" else "OFF"}):\n${_state.value.soulMarkdown.take(1500)}"
+                    }
+                }
+                "/remember" -> {
+                    if (arg.isBlank()) return "Usage: /remember key: fact"
+                    val idx = arg.indexOf(':')
+                    val (k, v) = if (idx > 0) arg.substring(0, idx).trim() to arg.substring(idx + 1).trim()
+                    else "tg_${System.currentTimeMillis() % 10000}" to arg
+                    upsertMemory(k, v, "general", emptyList(), pinned = true)
+                    return "Saved to long-term memory: $k -> $v"
+                }
+                "/memory" -> {
+                    val mems = _state.value.memories
+                    val matched = if (arg.isBlank()) mems else mems.filter {
+                        it.key.contains(arg, ignoreCase = true) || it.content.contains(arg, ignoreCase = true)
+                    }
+                    return if (matched.isEmpty()) "No matching memories."
+                    else matched.take(15).joinToString("\n") { "- [${it.category}] ${it.key}: ${it.content}" }
+                }
+                "/skills" -> {
+                    return "Tools & Skills:\n" + _state.value.skills.joinToString("\n") {
+                        "- [${if (it.enabled) "ON" else "OFF"}] ${it.name}"
+                    }
+                }
+                "/cache" -> {
+                    if (arg.equals("clear", ignoreCase = true)) {
+                        clearCache()
+                        return "Cache cleared."
+                    }
+                    val st = _state.value.routerStats
+                    return "Cache Hit Rate: ${st.hitRatePercent}% (${st.exactCacheHits} exact, ${st.semanticCacheHits} semantic, ${st.toolCacheHits} tool) | Saved ~${st.estimatedTokensSaved} tokens."
+                }
+                "/compact" -> {
+                    val hist = telegramHistories[chatId]
+                    if (hist == null || hist.size < 3) return "Not enough messages in this Telegram chat to compact yet."
+                    val transcript = hist.joinToString("\n\n") { "${it.role.uppercase()}: ${it.content.take(1200)}" }
+                    val routed = router.completeWithRouting(
+                        providers = _state.value.providers,
+                        activeProviderId = _state.value.activeProviderId,
+                        config = _state.value.routerConfig,
+                        systemPrompt = "Compress this chat into a dense lossless checkpoint.",
+                        messages = listOf(LlmTurnMessage("user", transcript)),
+                        tools = emptyList(),
+                        latestUserPrompt = transcript,
+                        sessionId = "tg_$chatId",
+                        onDelta = {}
+                    )
+                    hist.clear()
+                    hist.add(LlmTurnMessage("assistant", "Compacted Context:\n${routed.response.text}"))
+                    return "Compacted Telegram context:\n\n${routed.response.text}"
+                }
+                "/nocache" -> {
+                    if (arg.isBlank()) return "Usage: /nocache <your prompt>"
+                    trimmed = arg
+                    bypassCache = true
+                }
             }
         }
 
@@ -633,7 +744,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         val ctxHash = AuraCacheEngine.sha256Short(history.takeLast(4).joinToString("|") { "${it.role}:${it.content.take(60)}" })
 
         // Check AuraCache first!
-        val hit = AuraCacheEngine.lookup(
+        val hit = if (bypassCache) null else AuraCacheEngine.lookup(
             entries = s.cacheEntries,
             config = s.routerConfig,
             gemId = currentGem?.id.orEmpty(),
