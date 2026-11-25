@@ -36,7 +36,8 @@ class LocalStore(context: Context) {
             loaded.copy(
                 providers = providers,
                 soulMarkdown = soul,
-                userProfileMarkdown = userMd
+                userProfileMarkdown = userMd,
+                subagents = if (loaded.subagents.isEmpty()) Defaults.defaultSubagents() else loaded.subagents
             )
         } catch (_: Exception) {
             initialSnapshot()
@@ -65,7 +66,8 @@ class LocalStore(context: Context) {
             soulMarkdown = Defaults.DEFAULT_SOUL_MD,
             userProfileMarkdown = Defaults.DEFAULT_USER_MD,
             localModels = emptyList(),
-            themePreset = AppThemePreset.OBSIDIAN_GRAPHITE
+            themePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
+            subagents = Defaults.defaultSubagents()
         )
     }
 }

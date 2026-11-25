@@ -7,6 +7,8 @@ import com.aura.agent.commands.SlashCommandRegistry
 import com.aura.agent.data.AgentSkill
 import com.aura.agent.data.Defaults
 import com.aura.agent.data.AuditLogEntry
+import com.aura.agent.data.GlobalApprovalMode
+import com.aura.agent.data.SubagentConfig
 import com.aura.agent.data.ReasoningEffort
 import com.aura.agent.data.RoutingMode
 import com.aura.agent.data.ToolPermissionMode
@@ -44,7 +46,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class ActiveScreen {
-    CHAT, GEMS, SKILLS, AGENT_BRAIN, LOCAL_MODELS, ROUTER, SETTINGS
+    CHAT, GEMS, SKILLS, SUBAGENTS, AGENT_BRAIN, LOCAL_MODELS, ROUTER, SETTINGS
 }
 
 data class DownloadProgress(
@@ -92,7 +94,9 @@ data class AuraUiState(
     val draftUseSoulMd: Boolean = true,
     val draftUseMemoryMd: Boolean = true,
     val draftReasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
+    val globalApprovalMode: GlobalApprovalMode = GlobalApprovalMode.CUSTOM,
     val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
+    val subagents: List<SubagentConfig> = emptyList(),
     val auditLogs: List<AuditLogEntry> = emptyList(),
     val pendingApproval: PendingToolApproval? = null
 ) {
@@ -149,17 +153,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { s -> s.copy(routerStats = s.routerStats.copy(toolCacheHits = s.routerStats.toolCacheHits + 1)) }
         },
         runSubagent = { role, task ->
-            val subRouted = router.completeWithRouting(
-                providers = _state.value.providers,
-                activeProviderId = _state.value.activeProviderId,
-                config = _state.value.routerConfig,
-                systemPrompt = "You are a focused subagent acting as: $role. Complete the delegated task concisely and accurately.",
-                messages = listOf(LlmTurnMessage(role = "user", content = task)),
-                tools = emptyList(),
-                latestUserPrompt = task,
-                onDelta = {}
-            )
-            "[Subagent: $role · ${subRouted.usedProvider.model}]\n${subRouted.response.text}"
+            executeSubagentCall(role, task)
         }
     )
 
@@ -181,8 +175,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             routerConfig = snap.routerConfig,
             cacheEntries = snap.cacheEntries,
             routerStats = snap.routerStats,
+            globalApprovalMode = snap.globalApprovalMode,
             toolPolicies = snap.toolPolicies,
-            auditLogs = snap.auditLogs
+            auditLogs = snap.auditLogs,
+            subagents = snap.subagents
         )
     }
 
@@ -203,8 +199,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 routerConfig = s.routerConfig,
                 cacheEntries = s.cacheEntries,
                 routerStats = s.routerStats,
+                globalApprovalMode = s.globalApprovalMode,
                 toolPolicies = s.toolPolicies,
-                auditLogs = s.auditLogs.take(100)
+                auditLogs = s.auditLogs.take(100),
+                subagents = s.subagents
             )
         )
     }
@@ -261,6 +259,78 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             ReasoningEffort.HIGH -> ReasoningEffort.LOW
         }
         setReasoningEffort(next)
+    }
+
+
+    fun setGlobalApprovalMode(mode: GlobalApprovalMode) {
+        _state.update { it.copy(globalApprovalMode = mode) }
+        persist()
+    }
+
+    fun clearAuditLogs() {
+        _state.update { it.copy(auditLogs = emptyList()) }
+        persist()
+    }
+
+    fun saveSubagent(sub: SubagentConfig) {
+        _state.update { s ->
+            val exists = s.subagents.any { it.id == sub.id }
+            val updated = if (exists) s.subagents.map { if (it.id == sub.id) sub else it } else listOf(sub) + s.subagents
+            s.copy(subagents = updated)
+        }
+        persist()
+    }
+
+    fun deleteSubagent(id: String) {
+        _state.update { s -> s.copy(subagents = s.subagents.filterNot { it.id == id }) }
+        persist()
+    }
+
+    private suspend fun executeSubagentCall(roleOrName: String, task: String): String {
+        val s = _state.value
+        val matched = s.subagents.firstOrNull {
+            it.name.equals(roleOrName, ignoreCase = true) ||
+                it.role.equals(roleOrName, ignoreCase = true) ||
+                it.name.contains(roleOrName, ignoreCase = true)
+        }
+        val baseProviders = if (matched?.providerId != null) {
+            s.providers.map { p ->
+                if (p.id == matched.providerId) {
+                    p.copy(
+                        model = matched.modelOverride.ifBlank { p.model },
+                        temperature = matched.temperature
+                    )
+                } else p
+            }
+        } else if (matched != null && matched.modelOverride.isNotBlank()) {
+            s.providers.map { p ->
+                if (p.id == s.activeProviderId) p.copy(model = matched.modelOverride, temperature = matched.temperature) else p
+            }
+        } else s.providers
+
+        val targetPid = matched?.providerId ?: s.activeProviderId
+        val eff = matched?.reasoningEffort ?: s.effectiveReasoningEffort
+        val sys = buildString {
+            if (matched != null && matched.systemPrompt.isNotBlank()) {
+                appendLine(matched.systemPrompt)
+            } else {
+                appendLine("You are a focused subagent acting as: $roleOrName. Complete the delegated task concisely and accurately.")
+            }
+            if (eff == ReasoningEffort.HIGH) appendLine("Reasoning Effort: HIGH — verify all edge cases carefully.")
+            if (eff == ReasoningEffort.LOW) appendLine("Reasoning Effort: LOW — be brief and direct.")
+        }.trim()
+
+        val routed = router.completeWithRouting(
+            providers = baseProviders,
+            activeProviderId = targetPid,
+            config = s.routerConfig,
+            systemPrompt = sys,
+            messages = listOf(LlmTurnMessage(role = "user", content = task)),
+            tools = emptyList(),
+            latestUserPrompt = task,
+            onDelta = {}
+        )
+        return "[Subagent: ${matched?.name ?: roleOrName} · ${routed.usedProvider.model} · Effort: ${eff.label}]\n${routed.response.text}"
     }
 
     fun setToolPolicy(toolName: String, mode: ToolPermissionMode) {
@@ -792,7 +862,11 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     )
 
                     for (tc in routed.response.toolCalls) {
-                        val policy = _state.value.toolPolicies[tc.name] ?: ToolPermissionMode.ALLOW
+                        val policy = when (_state.value.globalApprovalMode) {
+                            GlobalApprovalMode.AUTONOMOUS -> _state.value.toolPolicies[tc.name] ?: ToolPermissionMode.ALLOW
+                            GlobalApprovalMode.ASK_EVERY_TOOL -> if (_state.value.toolPolicies[tc.name] == ToolPermissionMode.DENY) ToolPermissionMode.DENY else ToolPermissionMode.ASK
+                            GlobalApprovalMode.CUSTOM -> _state.value.toolPolicies[tc.name] ?: ToolPermissionMode.ALLOW
+                        }
                         val execResult = when (policy) {
                             ToolPermissionMode.DENY -> {
                                 recordAudit(tc.name, "DENIED", "Blocked by OpenBot Action Policy")
@@ -1269,6 +1343,28 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     val outFile = File(store.workspaceDir, fileName)
                     outFile.writeText(md)
                     appendLocalCommandReply(raw, "Exported ${sess.messages.size} messages to local workspace: `$fileName`", "Command · /export")
+                }
+                return true
+            }
+            "/subagent" -> {
+                val sp = arg.split(Regex("\\s+"), limit = 2)
+                if (sp.size < 2) {
+                    val list = _state.value.subagents.joinToString("\n") { "- ${it.name} (${it.role}) · Effort: ${it.reasoningEffort.label}" }
+                    appendLocalCommandReply(raw, "Custom Subagents:\n$list\n\nUsage: `/subagent <name> <task>`", "Command · /subagent")
+                } else {
+                    val targetName = sp[0]
+                    val taskText = sp[1]
+                    _state.update { it.copy(isGenerating = true) }
+                    activeJob = viewModelScope.launch {
+                        try {
+                            val out = executeSubagentCall(targetName, taskText)
+                            appendLocalCommandReply(raw, out, "Subagent · $targetName")
+                        } catch (e: Exception) {
+                            appendLocalCommandReply(raw, "Subagent error: ${e.message}", "Subagent · Error")
+                        } finally {
+                            _state.update { it.copy(isGenerating = false) }
+                        }
+                    }
                 }
                 return true
             }

@@ -11,6 +11,28 @@ enum class ReasoningEffort(val label: String, val maxToolSteps: Int) {
     HIGH("High", 12)
 }
 
+
+@Serializable
+enum class GlobalApprovalMode(val label: String, val subtitle: String) {
+    AUTONOMOUS("Autonomous", "Run tools automatically unless overridden per tool"),
+    ASK_EVERY_TOOL("Ask Every Tool", "Always ask for approval before running any tool"),
+    CUSTOM("Per-Tool Policy", "Follow individual Allow / Ask / Block rules below")
+}
+
+@Serializable
+data class SubagentConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val role: String,
+    val systemPrompt: String,
+    val providerId: String? = null,
+    val modelOverride: String = "",
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
+    val temperature: Float = 0.5f,
+    val askBeforeRunning: Boolean = false,
+    val isBuiltIn: Boolean = false
+)
+
 @Serializable
 enum class ToolPermissionMode(val label: String) {
     ALLOW("Auto-Allow"),
@@ -220,6 +242,8 @@ data class AppStateSnapshot(
     val routerConfig: RouterConfig = RouterConfig(),
     val cacheEntries: List<CacheEntry> = emptyList(),
     val routerStats: RouterStats = RouterStats(),
+    val globalApprovalMode: GlobalApprovalMode = GlobalApprovalMode.CUSTOM,
     val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
-    val auditLogs: List<AuditLogEntry> = emptyList()
+    val auditLogs: List<AuditLogEntry> = emptyList(),
+    val subagents: List<SubagentConfig> = emptyList()
 )

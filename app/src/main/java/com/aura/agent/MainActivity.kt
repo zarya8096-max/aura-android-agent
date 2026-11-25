@@ -62,7 +62,9 @@ import com.aura.agent.ui.screens.GemsScreen
 import com.aura.agent.ui.screens.LocalModelsScreen
 import com.aura.agent.ui.screens.RouterScreen
 import com.aura.agent.ui.screens.SettingsScreen
+import androidx.compose.material.icons.outlined.SmartToy
 import com.aura.agent.ui.screens.SkillsScreen
+import com.aura.agent.ui.screens.SubagentsScreen
 import com.aura.agent.ui.theme.AuraTheme
 import com.aura.agent.viewmodel.ActiveScreen
 import com.aura.agent.viewmodel.AuraViewModel
@@ -162,6 +164,17 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                 scope.launch { drawerState.close() }
                             },
                             icon = { Icon(Icons.Rounded.Extension, contentDescription = null) },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
+                        )
+
+                        NavigationDrawerItem(
+                            label = { Text("Subagents (${state.subagents.size})") },
+                            selected = state.activeScreen == ActiveScreen.SUBAGENTS,
+                            onClick = {
+                                vm.navigateTo(ActiveScreen.SUBAGENTS)
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                         )
 
@@ -271,11 +284,24 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onOpenGems = { vm.navigateTo(ActiveScreen.GEMS) },
                         onOpenSkills = { vm.navigateTo(ActiveScreen.SKILLS) }
                     )
+                    ActiveScreen.SUBAGENTS -> SubagentsScreen(
+                        subagents = state.subagents,
+                        providers = state.providers,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onSaveSubagent = { vm.saveSubagent(it) },
+                        onDeleteSubagent = { vm.deleteSubagent(it) }
+                    )
                     ActiveScreen.AGENT_BRAIN -> AgentBrainScreen(
                         soulMarkdown = state.soulMarkdown,
                         userProfileMarkdown = state.userProfileMarkdown,
                         memories = state.memories,
+                        globalApprovalMode = state.globalApprovalMode,
+                        toolPolicies = state.toolPolicies,
+                        auditLogs = state.auditLogs,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onSetGlobalApproval = { vm.setGlobalApprovalMode(it) },
+                        onSetToolPolicy = { t, m -> vm.setToolPolicy(t, m) },
+                        onClearAuditLogs = { vm.clearAuditLogs() },
                         onSaveSoul = { vm.updateSoulMarkdown(it) },
                         onSaveUserProfile = { vm.updateUserProfileMarkdown(it) },
                         onAddMemory = { k, c, cat, pin -> vm.upsertMemory(k, c, cat, emptyList(), pin) },

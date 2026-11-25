@@ -50,7 +50,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aura.agent.data.Defaults
+import com.aura.agent.data.AuditLogEntry
+import com.aura.agent.data.GlobalApprovalMode
 import com.aura.agent.data.MemoryEntry
+import com.aura.agent.data.ToolPermissionMode
+import androidx.compose.material3.RadioButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +62,13 @@ fun AgentBrainScreen(
     soulMarkdown: String,
     userProfileMarkdown: String,
     memories: List<MemoryEntry>,
+    globalApprovalMode: GlobalApprovalMode,
+    toolPolicies: Map<String, ToolPermissionMode>,
+    auditLogs: List<AuditLogEntry>,
     onBack: () -> Unit,
+    onSetGlobalApproval: (GlobalApprovalMode) -> Unit,
+    onSetToolPolicy: (String, ToolPermissionMode) -> Unit,
+    onClearAuditLogs: () -> Unit,
     onSaveSoul: (String) -> Unit,
     onSaveUserProfile: (String) -> Unit,
     onAddMemory: (key: String, content: String, category: String, pinned: Boolean) -> Unit,
@@ -71,7 +81,7 @@ fun AgentBrainScreen(
     var memoryQuery by remember { mutableStateOf("") }
     var showAddMemory by remember { mutableStateOf(false) }
 
-    val tabs = listOf("SOUL.md", "USER.md", "Memory (${memories.size})")
+    val tabs = listOf("SOUL.md", "USER.md", "Memory (${memories.size})", "Policies")
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -280,6 +290,125 @@ fun AgentBrainScreen(
                                     IconButton(onClick = { onDeleteMemory(mem.id) }) {
                                         Icon(Icons.Outlined.Delete, contentDescription = "Delete memory")
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                3 -> {
+                    val toolNames = listOf(
+                        "http_fetch", "web_search", "file_workspace",
+                        "memory_save", "memory_delete", "spawn_subagent",
+                        "calculator", "json_query", "text_transform", "device_time"
+                    )
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        item {
+                            Text(
+                                text = "Approval Behavior (Ask Before Actions)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        items(GlobalApprovalMode.entries) { mode ->
+                            Surface(
+                                onClick = { onSetGlobalApproval(mode) },
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(10.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = globalApprovalMode == mode,
+                                        onClick = { onSetGlobalApproval(mode) }
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(mode.label, style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            mode.subtitle,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Per-Tool Permissions",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        items(toolNames) { tool ->
+                            val curr = toolPolicies[tool] ?: ToolPermissionMode.ALLOW
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(12.dp)
+                                ) {
+                                    Text(tool, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        ToolPermissionMode.entries.forEach { pm ->
+                                            FilterChip(
+                                                selected = curr == pm,
+                                                onClick = { onSetToolPolicy(tool, pm) },
+                                                label = { Text(pm.label) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Audit Log (${auditLogs.size})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (auditLogs.isNotEmpty()) {
+                                    TextButton(onClick = onClearAuditLogs) { Text("Clear") }
+                                }
+                            }
+                        }
+                        items(auditLogs.take(25), key = { it.id }) { log ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = "${log.toolName} · ${log.decision} (${log.sourceGem})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (log.decision == "DENIED" || log.decision == "ERROR") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = log.summary,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2
+                                    )
                                 }
                             }
                         }

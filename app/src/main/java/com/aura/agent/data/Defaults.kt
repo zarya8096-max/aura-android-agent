@@ -262,4 +262,34 @@ object Defaults {
             isBuiltIn = true
         )
     )
+
+    fun defaultSubagents(): List<SubagentConfig> = listOf(
+        SubagentConfig(
+            id = "sub-reviewer",
+            name = "Code Reviewer",
+            role = "Senior Code & Security Reviewer",
+            systemPrompt = "Audit code strictly for bugs, race conditions, security flaws, and performance bottlenecks. Return concise, prioritized findings with exact fixes.",
+            reasoningEffort = ReasoningEffort.HIGH,
+            temperature = 0.2f,
+            isBuiltIn = true
+        ),
+        SubagentConfig(
+            id = "sub-researcher",
+            name = "Fact Checker",
+            role = "Fast Research & Verification Subagent",
+            systemPrompt = "Verify claims concisely, separate confirmed facts from assumptions, and return a compact summary.",
+            reasoningEffort = ReasoningEffort.MEDIUM,
+            temperature = 0.3f,
+            isBuiltIn = true
+        ),
+        SubagentConfig(
+            id = "sub-summarizer",
+            name = "Fast Summarizer",
+            role = "Ultra-Fast Context Compactor",
+            systemPrompt = "Compress long inputs into dense bullet points preserving all numbers, names, and decisions.",
+            reasoningEffort = ReasoningEffort.LOW,
+            temperature = 0.2f,
+            isBuiltIn = true
+        )
+    )
 }
