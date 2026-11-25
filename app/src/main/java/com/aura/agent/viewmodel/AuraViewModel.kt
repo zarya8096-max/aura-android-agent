@@ -159,8 +159,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 latestUserPrompt = task,
                 onDelta = {}
             )
-            "[Subagent: $role · ${subRouted.usedProvider.model}]
-${subRouted.response.text}"
+            "[Subagent: $role · ${subRouted.usedProvider.model}]\n${subRouted.response.text}"
         }
     )
 
