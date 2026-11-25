@@ -122,8 +122,11 @@ private fun AssistantMessageBlock(message: ChatMessage) {
                 }
 
                 if (!message.isStreaming && message.content.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         IconButton(
                             onClick = { clipboard.setText(AnnotatedString(message.content)) },
                             modifier = Modifier.size(32.dp)
@@ -133,6 +136,26 @@ private fun AssistantMessageBlock(message: ChatMessage) {
                                 contentDescription = "Copy response",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        if (!message.cacheHitBadge.isNullOrBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = message.cacheHitBadge,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                        if (!message.routedProviderBadge.isNullOrBlank()) {
+                            Text(
+                                text = message.routedProviderBadge,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

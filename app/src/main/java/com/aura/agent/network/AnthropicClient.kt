@@ -43,7 +43,14 @@ class AnthropicClient : LlmClient {
             put("temperature", provider.temperature.toDouble())
             put("stream", true)
             if (systemPrompt.isNotBlank()) {
-                put("system", systemPrompt)
+                // Official Anthropic Prompt Caching on system block
+                put("system", buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", "text")
+                        put("text", systemPrompt)
+                        put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                    })
+                })
             }
             put("messages", buildJsonArray {
                 for (m in messages) {
@@ -89,11 +96,14 @@ class AnthropicClient : LlmClient {
             })
             if (tools.isNotEmpty()) {
                 put("tools", buildJsonArray {
-                    for (t in tools) {
+                    tools.forEachIndexed { idx, t ->
                         add(buildJsonObject {
                             put("name", t.name)
                             put("description", t.description)
                             put("input_schema", t.parametersSchema)
+                            if (idx == tools.lastIndex) {
+                                put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                            }
                         })
                     }
                 })
@@ -110,7 +120,7 @@ class AnthropicClient : LlmClient {
         provider.customHeaders.forEach { (k, v) -> reqBuilder.header(k, v) }
 
         val fullText = StringBuilder()
-        val toolUseBlocks = linkedMapOf<Int, MutableList<String>>() // index -> [id, name, partialJson]
+        val toolUseBlocks = linkedMapOf<Int, MutableList<String>>()
 
         client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) {

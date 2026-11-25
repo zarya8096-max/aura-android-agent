@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aura.agent.ui.components.SparkleIcon
 import com.aura.agent.ui.screens.ChatScreen
 import com.aura.agent.ui.screens.GemsScreen
+import com.aura.agent.ui.screens.RouterScreen
 import com.aura.agent.ui.screens.SettingsScreen
 import com.aura.agent.ui.screens.SkillsScreen
 import com.aura.agent.ui.theme.AuraTheme
@@ -183,6 +185,17 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                         )
 
+                        NavigationDrawerItem(
+                            label = { Text("AuraRouter · ${state.routerStats.hitRatePercent}% Cache") },
+                            selected = state.activeScreen == ActiveScreen.ROUTER,
+                            onClick = {
+                                vm.navigateTo(ActiveScreen.ROUTER)
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.Rounded.Hub, contentDescription = null) },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
+                        )
+
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                         Text(
@@ -278,6 +291,16 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onToggleSkill = { vm.toggleSkill(it) },
                         onSaveSkill = { vm.saveSkill(it) },
                         onDeleteSkill = { vm.deleteSkill(it) }
+                    )
+                    ActiveScreen.ROUTER -> RouterScreen(
+                        config = state.routerConfig,
+                        stats = state.routerStats,
+                        cacheCount = state.cacheEntries.size,
+                        providers = state.providers,
+                        healthMap = state.providerHealth,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onUpdateConfig = { vm.updateRouterConfig(it) },
+                        onClearCache = { vm.clearCache() }
                     )
                     ActiveScreen.SETTINGS -> SettingsScreen(
                         providers = state.providers,

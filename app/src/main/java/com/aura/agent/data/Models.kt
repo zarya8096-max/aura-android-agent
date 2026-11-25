@@ -11,6 +11,53 @@ enum class ApiProtocol(val label: String) {
 }
 
 @Serializable
+enum class RoutingMode(val label: String, val subtitle: String) {
+    SMART_AUTO("Smart Auto", "Routes simple prompts to fast models & complex tasks to flagship models with auto-fallback"),
+    PRIORITY_FALLBACK("Priority Fallback", "Uses active provider first and fails over automatically on 429/5xx errors"),
+    LOWEST_LATENCY("Lowest Latency", "Picks the fastest healthy provider based on measured response time"),
+    MANUAL("Manual", "Always uses the selected provider only")
+}
+
+@Serializable
+data class RouterConfig(
+    val mode: RoutingMode = RoutingMode.SMART_AUTO,
+    val enableFallback: Boolean = true,
+    val exactCacheEnabled: Boolean = true,
+    val semanticCacheEnabled: Boolean = true,
+    val semanticThreshold: Float = 0.84f,
+    val cacheTtlMinutes: Int = 1440,
+    val maxCacheEntries: Int = 250
+)
+
+@Serializable
+data class CacheEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val gemId: String = "",
+    val systemHash: String,
+    val contextHash: String,
+    val normalizedPrompt: String,
+    val originalPrompt: String,
+    val response: String,
+    val providerLabel: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastAccessedAt: Long = System.currentTimeMillis(),
+    val hitCount: Int = 0
+)
+
+@Serializable
+data class RouterStats(
+    val totalRequests: Int = 0,
+    val exactCacheHits: Int = 0,
+    val semanticCacheHits: Int = 0,
+    val fallbackRecoveries: Int = 0,
+    val estimatedTokensSaved: Long = 0L
+) {
+    val totalCacheHits: Int get() = exactCacheHits + semanticCacheHits
+    val hitRatePercent: Int
+        get() = if (totalRequests <= 0) 0 else ((totalCacheHits * 100f) / totalRequests).toInt().coerceIn(0, 100)
+}
+
+@Serializable
 data class ProviderConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -70,12 +117,14 @@ data class ToolCallTrace(
 @Serializable
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
-    val role: String, // "user", "assistant", "system"
+    val role: String,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val toolTraces: List<ToolCallTrace> = emptyList(),
     val isStreaming: Boolean = false,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val cacheHitBadge: String? = null,
+    val routedProviderBadge: String? = null
 )
 
 @Serializable
@@ -103,5 +152,8 @@ data class AppStateSnapshot(
     val skills: List<AgentSkill> = emptyList(),
     val sessions: List<ChatSession> = emptyList(),
     val notes: List<AgentNote> = emptyList(),
-    val darkMode: Boolean = true
+    val darkMode: Boolean = true,
+    val routerConfig: RouterConfig = RouterConfig(),
+    val cacheEntries: List<CacheEntry> = emptyList(),
+    val routerStats: RouterStats = RouterStats()
 )

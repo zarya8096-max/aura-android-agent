@@ -6,15 +6,20 @@ import androidx.lifecycle.viewModelScope
 import com.aura.agent.data.AgentNote
 import com.aura.agent.data.AgentSkill
 import com.aura.agent.data.AppStateSnapshot
+import com.aura.agent.data.CacheEntry
 import com.aura.agent.data.ChatMessage
 import com.aura.agent.data.ChatSession
 import com.aura.agent.data.Gem
 import com.aura.agent.data.LocalStore
 import com.aura.agent.data.ProviderConfig
+import com.aura.agent.data.RouterConfig
+import com.aura.agent.data.RouterStats
 import com.aura.agent.data.SkillType
 import com.aura.agent.data.ToolCallTrace
-import com.aura.agent.network.LlmClientFactory
 import com.aura.agent.network.LlmTurnMessage
+import com.aura.agent.router.AuraCacheEngine
+import com.aura.agent.router.AuraRouter
+import com.aura.agent.router.ProviderHealth
 import com.aura.agent.skills.SkillExecutor
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class ActiveScreen {
-    CHAT, GEMS, SKILLS, SETTINGS
+    CHAT, GEMS, SKILLS, ROUTER, SETTINGS
 }
 
 data class AuraUiState(
@@ -38,7 +43,11 @@ data class AuraUiState(
     val notes: List<AgentNote> = emptyList(),
     val darkMode: Boolean = true,
     val isGenerating: Boolean = false,
-    val activeScreen: ActiveScreen = ActiveScreen.CHAT
+    val activeScreen: ActiveScreen = ActiveScreen.CHAT,
+    val routerConfig: RouterConfig = RouterConfig(),
+    val cacheEntries: List<CacheEntry> = emptyList(),
+    val routerStats: RouterStats = RouterStats(),
+    val providerHealth: Map<String, ProviderHealth> = emptyMap()
 ) {
     val activeProvider: ProviderConfig?
         get() = providers.firstOrNull { it.id == activeProviderId } ?: providers.firstOrNull()
@@ -55,6 +64,7 @@ data class AuraUiState(
 
 class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val store = LocalStore(application.applicationContext)
+    private val router = AuraRouter()
     private val _state = MutableStateFlow(AuraUiState())
     val state: StateFlow<AuraUiState> = _state.asStateFlow()
 
@@ -76,7 +86,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             activeSessionId = snap.sessions.firstOrNull()?.id,
             activeGemId = snap.sessions.firstOrNull()?.gemId,
             notes = snap.notes,
-            darkMode = snap.darkMode
+            darkMode = snap.darkMode,
+            routerConfig = snap.routerConfig,
+            cacheEntries = snap.cacheEntries,
+            routerStats = snap.routerStats
         )
     }
 
@@ -90,17 +103,30 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 skills = s.skills,
                 sessions = s.sessions,
                 notes = s.notes,
-                darkMode = s.darkMode
+                darkMode = s.darkMode,
+                routerConfig = s.routerConfig,
+                cacheEntries = s.cacheEntries,
+                routerStats = s.routerStats
             )
         )
     }
 
     fun navigateTo(screen: ActiveScreen) {
-        _state.update { it.copy(activeScreen = screen) }
+        _state.update { it.copy(activeScreen = screen, providerHealth = router.getHealthSnapshot()) }
     }
 
     fun toggleDarkMode() {
         _state.update { it.copy(darkMode = !it.darkMode) }
+        persist()
+    }
+
+    fun updateRouterConfig(config: RouterConfig) {
+        _state.update { it.copy(routerConfig = config) }
+        persist()
+    }
+
+    fun clearCache() {
+        _state.update { it.copy(cacheEntries = emptyList()) }
         persist()
     }
 
@@ -243,20 +269,97 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    fun sendMessage(userText: String) {
+    fun sendMessage(userText: String, bypassCache: Boolean = false) {
         val prompt = userText.trim()
         if (prompt.isEmpty() || _state.value.isGenerating) return
 
-        val provider = _state.value.activeProvider ?: return
-        if (provider.apiKey.isBlank() && !provider.baseUrl.contains("11434") && !provider.baseUrl.contains("localhost") && !provider.baseUrl.contains("127.0.0.1")) {
+        val snap = _state.value
+        val hasAnyConfigured = snap.providers.any { router.isConfigured(it) }
+        if (!hasAnyConfigured) {
             appendErrorSessionMessage(
                 prompt,
-                "API key is missing for ${provider.name}. Open Settings from the drawer to add your API key."
+                "No API key configured yet. Open API Providers & Settings from the drawer to add at least one provider key."
             )
             return
         }
 
-        val currentGem = _state.value.activeGem
+        val currentGem = snap.activeGem
+        val gemId = currentGem?.id.orEmpty()
+        val enabledSkills = resolveEnabledSkills(currentGem)
+        val systemPrompt = buildSystemPrompt(currentGem, enabledSkills)
+        val systemHash = AuraCacheEngine.sha256Short(systemPrompt)
+
+        val priorContext = snap.activeSession?.messages
+            ?.filter { !it.isError && it.content.isNotBlank() }
+            ?.takeLast(4)
+            ?.joinToString("|") { "${it.role}:${AuraCacheEngine.normalizeText(it.content).take(80)}" }
+            .orEmpty()
+        val contextHash = AuraCacheEngine.sha256Short(priorContext)
+
+        // Increment total requests stat
+        _state.update { s -> s.copy(routerStats = s.routerStats.copy(totalRequests = s.routerStats.totalRequests + 1)) }
+
+        // Check Aura Multi-Layer Cache (Exact + Bilingual Semantic Similarity)
+        if (!bypassCache) {
+            val hit = AuraCacheEngine.lookup(
+                entries = _state.value.cacheEntries,
+                config = _state.value.routerConfig,
+                gemId = gemId,
+                systemHash = systemHash,
+                contextHash = contextHash,
+                prompt = prompt
+            )
+            if (hit != null) {
+                val pct = (hit.similarityScore * 100).toInt().coerceIn(1, 100)
+                val badge = if (hit.isExact) "Exact Cache (0ms)" else "Semantic Cache ($pct% match)"
+                val savedTokens = AuraCacheEngine.estimateTokens(systemPrompt + prompt + hit.entry.response)
+                val userMsg = ChatMessage(role = "user", content = prompt)
+                val cachedReply = ChatMessage(
+                    role = "assistant",
+                    content = hit.entry.response,
+                    cacheHitBadge = badge,
+                    routedProviderBadge = hit.entry.providerLabel
+                )
+                _state.update { s ->
+                    val updatedEntries = s.cacheEntries.map { ce ->
+                        if (ce.id == hit.entry.id) {
+                            ce.copy(hitCount = ce.hitCount + 1, lastAccessedAt = System.currentTimeMillis())
+                        } else ce
+                    }
+                    val updatedStats = s.routerStats.copy(
+                        exactCacheHits = s.routerStats.exactCacheHits + if (hit.isExact) 1 else 0,
+                        semanticCacheHits = s.routerStats.semanticCacheHits + if (hit.isExact) 0 else 1,
+                        estimatedTokensSaved = s.routerStats.estimatedTokensSaved + savedTokens
+                    )
+                    val existing = s.activeSession
+                    val newSessions = if (existing == null) {
+                        val ns = ChatSession(
+                            title = prompt.take(36),
+                            gemId = currentGem?.id,
+                            providerId = s.activeProviderId,
+                            messages = listOf(userMsg, cachedReply)
+                        )
+                        listOf(ns) + s.sessions
+                    } else {
+                        s.sessions.map { sess ->
+                            if (sess.id == existing.id) {
+                                sess.copy(messages = sess.messages + userMsg + cachedReply, updatedAt = System.currentTimeMillis())
+                            } else sess
+                        }
+                    }
+                    val newActiveId = existing?.id ?: newSessions.first().id
+                    s.copy(
+                        sessions = newSessions,
+                        activeSessionId = newActiveId,
+                        cacheEntries = updatedEntries,
+                        routerStats = updatedStats
+                    )
+                }
+                persist()
+                return
+            }
+        }
+
         val userMsg = ChatMessage(role = "user", content = prompt)
         val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
 
@@ -266,7 +369,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             val newSession = ChatSession(
                 title = prompt.take(36),
                 gemId = currentGem?.id,
-                providerId = provider.id,
+                providerId = _state.value.activeProviderId,
                 messages = listOf(userMsg, assistantMsg)
             )
             sessionId = newSession.id
@@ -295,52 +398,61 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         }
         persist()
 
-        val enabledSkills = resolveEnabledSkills(currentGem)
-        val systemPrompt = buildSystemPrompt(currentGem, enabledSkills)
         val toolSpecs = skillExecutor.buildToolSpecs(enabledSkills)
 
         activeJob = viewModelScope.launch {
             try {
                 val historyTurns = buildInitialTurnMessages(sessionId)
-                val llmClient = LlmClientFactory.forProtocol(provider.protocol)
                 val traces = mutableListOf<ToolCallTrace>()
                 val streamedBuffer = StringBuilder()
+                var usedProviderLabel = ""
+                var anyFallback = false
 
-                // Agentic multi-step tool loop (max 5 tool rounds)
                 var round = 0
                 while (round < 5) {
                     round++
-                    val roundText = StringBuilder()
-                    val response = llmClient.complete(
-                        provider = provider,
+                    val routed = router.completeWithRouting(
+                        providers = _state.value.providers,
+                        activeProviderId = _state.value.activeProviderId,
+                        config = _state.value.routerConfig,
                         systemPrompt = systemPrompt,
                         messages = historyTurns,
                         tools = toolSpecs,
+                        latestUserPrompt = prompt,
                         onDelta = { delta ->
-                            roundText.append(delta)
                             streamedBuffer.append(delta)
-                            updateAssistantMessage(sessionId, assistantMsg.id, streamedBuffer.toString(), traces.toList(), true, false)
+                            updateAssistantMessage(
+                                sessionId = sessionId,
+                                messageId = assistantMsg.id,
+                                content = streamedBuffer.toString(),
+                                traces = traces.toList(),
+                                streaming = true,
+                                isError = false,
+                                routedBadge = usedProviderLabel.ifBlank { null }
+                            )
                         }
                     )
 
-                    if (response.toolCalls.isEmpty()) {
-                        if (streamedBuffer.isEmpty() && response.text.isNotBlank()) {
-                            streamedBuffer.append(response.text)
+                    usedProviderLabel = "${routed.usedProvider.name} · ${routed.usedProvider.model}" +
+                        if (routed.fallbackTriggered) " (Fallback)" else ""
+                    if (routed.fallbackTriggered) anyFallback = true
+
+                    if (routed.response.toolCalls.isEmpty()) {
+                        if (streamedBuffer.isEmpty() && routed.response.text.isNotBlank()) {
+                            streamedBuffer.append(routed.response.text)
                         }
                         break
                     }
 
-                    // Append assistant tool-call turn
                     historyTurns.add(
                         LlmTurnMessage(
                             role = "assistant",
-                            content = response.text,
-                            toolCalls = response.toolCalls
+                            content = routed.response.text,
+                            toolCalls = routed.response.toolCalls
                         )
                     )
 
-                    // Execute each requested tool locally
-                    for (tc in response.toolCalls) {
+                    for (tc in routed.response.toolCalls) {
                         val execResult = skillExecutor.execute(tc.name, tc.argumentsJson, enabledSkills)
                         traces.add(
                             ToolCallTrace(
@@ -350,7 +462,15 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                                 isError = execResult.isError
                             )
                         )
-                        updateAssistantMessage(sessionId, assistantMsg.id, streamedBuffer.toString(), traces.toList(), true, false)
+                        updateAssistantMessage(
+                            sessionId = sessionId,
+                            messageId = assistantMsg.id,
+                            content = streamedBuffer.toString(),
+                            traces = traces.toList(),
+                            streaming = true,
+                            isError = false,
+                            routedBadge = usedProviderLabel
+                        )
                         historyTurns.add(
                             LlmTurnMessage(
                                 role = "tool",
@@ -366,14 +486,47 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                val finalContent = streamedBuffer.toString().ifBlank { "(No response returned)" }
                 updateAssistantMessage(
                     sessionId = sessionId,
                     messageId = assistantMsg.id,
-                    content = streamedBuffer.toString().ifBlank { "(No response returned)" },
+                    content = finalContent,
                     traces = traces.toList(),
                     streaming = false,
-                    isError = false
+                    isError = false,
+                    routedBadge = usedProviderLabel
                 )
+
+                // Store non-tool answers in AuraCache for instant future hits
+                if (traces.isEmpty() && finalContent != "(No response returned)") {
+                    _state.update { s ->
+                        val newCache = AuraCacheEngine.putEntry(
+                            existing = s.cacheEntries,
+                            config = s.routerConfig,
+                            gemId = gemId,
+                            systemHash = systemHash,
+                            contextHash = contextHash,
+                            prompt = prompt,
+                            response = finalContent,
+                            providerLabel = usedProviderLabel
+                        )
+                        val newStats = if (anyFallback) {
+                            s.routerStats.copy(fallbackRecoveries = s.routerStats.fallbackRecoveries + 1)
+                        } else s.routerStats
+                        s.copy(
+                            cacheEntries = newCache,
+                            routerStats = newStats,
+                            providerHealth = router.getHealthSnapshot()
+                        )
+                    }
+                } else {
+                    _state.update { s ->
+                        val newStats = if (anyFallback) {
+                            s.routerStats.copy(fallbackRecoveries = s.routerStats.fallbackRecoveries + 1)
+                        } else s.routerStats
+                        s.copy(routerStats = newStats, providerHealth = router.getHealthSnapshot())
+                    }
+                }
             } catch (e: Exception) {
                 updateAssistantMessage(
                     sessionId = sessionId,
@@ -381,8 +534,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     content = "Request failed: ${e.message ?: e.javaClass.simpleName}",
                     traces = emptyList(),
                     streaming = false,
-                    isError = true
+                    isError = true,
+                    routedBadge = null
                 )
+                _state.update { it.copy(providerHealth = router.getHealthSnapshot()) }
             } finally {
                 _state.update { it.copy(isGenerating = false) }
                 persist()
@@ -422,7 +577,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildInitialTurnMessages(sessionId: String): MutableList<LlmTurnMessage> {
         val sess = _state.value.sessions.firstOrNull { it.id == sessionId } ?: return mutableListOf()
         return sess.messages
-            .dropLast(1) // Exclude placeholder streaming assistant message
+            .dropLast(1)
             .filter { !it.isError && it.content.isNotBlank() }
             .map { LlmTurnMessage(role = it.role, content = it.content) }
             .toMutableList()
@@ -434,7 +589,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         content: String,
         traces: List<ToolCallTrace>,
         streaming: Boolean,
-        isError: Boolean
+        isError: Boolean,
+        routedBadge: String?
     ) {
         _state.update { s ->
             s.copy(
@@ -447,7 +603,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                                         content = content,
                                         toolTraces = traces,
                                         isStreaming = streaming,
-                                        isError = isError
+                                        isError = isError,
+                                        routedProviderBadge = routedBadge
                                     )
                                 } else msg
                             }
