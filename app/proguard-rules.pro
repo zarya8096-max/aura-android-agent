@@ -1,0 +1,7 @@
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
+-keepclasseswithmembers class kotlinx.serialization.json.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class com.aura.agent.data.**$$serializer { *; }
+-keepclassmembers class com.aura.agent.data.** { *** Companion; }
+-keepclasseswithmembers class com.aura.agent.data.** { kotlinx.serialization.KSerializer serializer(...); }
