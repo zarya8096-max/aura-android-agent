@@ -93,7 +93,7 @@ fun AgentBrainScreen(
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
-                title = { Text("Agent Brain (Hermes)") }
+                title = { Text("Aura Brain") }
             )
         },
         floatingActionButton = {
@@ -144,7 +144,7 @@ fun AgentBrainScreen(
                                 FilterChip(
                                     selected = false,
                                     onClick = { soulDraft = Defaults.DEFAULT_SOUL_MD },
-                                    label = { Text("Reset Hermes Default") }
+                                    label = { Text("Reset Aura Default") }
                                 )
                             }
                             item {

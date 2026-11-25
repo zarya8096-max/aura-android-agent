@@ -22,6 +22,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -65,7 +67,8 @@ fun SettingsScreen(
     onSelectProvider: (String) -> Unit,
     onSaveProvider: (ProviderConfig) -> Unit,
     onDeleteProvider: (String) -> Unit,
-    onTestProvider: (ProviderConfig) -> Unit
+    onTestProvider: (ProviderConfig) -> Unit,
+    onRefreshAllModels: () -> Unit
 ) {
     var editingProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var addingNew by remember { mutableStateOf(false) }
@@ -158,12 +161,21 @@ fun SettingsScreen(
             }
 
             item {
-                Text(
-                    text = "API Providers (Tap + to add any custom endpoint)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = "API Providers",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = onRefreshAllModels) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null)
+                        Text(" Sync Live Models")
+                    }
+                }
             }
 
             items(providers, key = { it.id }) { provider ->
@@ -248,7 +260,8 @@ private fun ProviderEditorDialog(
             initial?.customHeaders?.entries?.joinToString("\n") { "${it.key}: ${it.value}" }.orEmpty()
         )
     }
-    val presets = initial?.availableModels.orEmpty()
+    var presets by remember { mutableStateOf(initial?.availableModels.orEmpty()) }
+    var newModelDraft by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -296,6 +309,29 @@ private fun ProviderEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = newModelDraft,
+                        onValueChange = { newModelDraft = it },
+                        label = { Text("Add Model ID manually") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            val trimmed = newModelDraft.trim()
+                            if (trimmed.isNotBlank()) {
+                                presets = (listOf(trimmed) + presets).distinct()
+                                model = trimmed
+                                newModelDraft = ""
+                            }
+                        }
+                    ) { Text("+ Add") }
+                }
                 if (presets.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(presets) { m ->
@@ -340,6 +376,7 @@ private fun ProviderEditorDialog(
                                 baseUrl = baseUrl.trim(),
                                 apiKey = apiKey.trim(),
                                 model = model.trim(),
+                                availableModels = (listOf(model.trim()) + presets).distinct(),
                                 customHeaders = parsedHeaders
                             )
                         )

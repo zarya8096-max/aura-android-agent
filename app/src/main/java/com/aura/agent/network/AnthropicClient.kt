@@ -54,8 +54,10 @@ class AnthropicClient : LlmClient {
                     })
                 })
             }
+            val cacheBreakpointIdx = if (messages.size >= 2) messages.lastIndex - 1 else -1
             put("messages", buildJsonArray {
-                for (m in messages) {
+                messages.forEachIndexed { mIdx, m ->
+                    val addCacheControl = mIdx == cacheBreakpointIdx
                     when (m.role) {
                         "tool" -> add(buildJsonObject {
                             put("role", "user")
@@ -91,7 +93,17 @@ class AnthropicClient : LlmClient {
                         })
                         else -> add(buildJsonObject {
                             put("role", "user")
-                            put("content", m.content)
+                            if (addCacheControl) {
+                                put("content", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("type", "text")
+                                        put("text", m.content)
+                                        put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                                    })
+                                })
+                            } else {
+                                put("content", m.content)
+                            }
                         })
                     }
                 }

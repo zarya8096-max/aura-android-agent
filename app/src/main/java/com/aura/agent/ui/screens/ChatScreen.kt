@@ -279,12 +279,12 @@ private fun EmptyGeminiHome(
             SparkleIcon(size = 28.dp)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = activeGem?.name ?: "Hello",
+                text = activeGem?.name ?: "Aura",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                text = activeGem?.description ?: "Where should we start?",
+                text = activeGem?.description ?: "چطور می‌تونم کمکت کنم؟",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -29,6 +29,7 @@ data class RoutedLlmResult(
 
 class AuraRouter {
     private val healthMap = ConcurrentHashMap<String, ProviderHealth>()
+    private val sessionAffinity = ConcurrentHashMap<String, String>()
 
     fun getHealthSnapshot(): Map<String, ProviderHealth> = healthMap.toMap()
 
@@ -43,7 +44,8 @@ class AuraRouter {
         activeProviderId: String,
         config: RouterConfig,
         prompt: String,
-        hasTools: Boolean
+        hasTools: Boolean,
+        sessionId: String? = null
     ): List<ProviderConfig> {
         val configured = providers.filter { isConfigured(it) }
         if (configured.isEmpty()) return emptyList()
@@ -55,6 +57,13 @@ class AuraRouter {
 
         val now = System.currentTimeMillis()
         val (healthy, cooling) = configured.partition { !(healthMap[it.id]?.isInCooldown(now) ?: false) }
+
+        // Phase 3: Session-Sticky Cache Affinity — keep warmed provider pinned for the entire session to maximize KV-cache hits
+        val stickyId = if (sessionId != null) sessionAffinity[sessionId] else null
+        val stickyProvider = stickyId?.let { id -> healthy.firstOrNull { it.id == id } }
+        if (stickyProvider != null && config.mode != RoutingMode.MANUAL) {
+            return listOf(stickyProvider) + healthy.filterNot { it.id == stickyProvider.id } + cooling
+        }
 
         val rankedHealthy = when (config.mode) {
             RoutingMode.PRIORITY_FALLBACK -> {
@@ -87,6 +96,7 @@ class AuraRouter {
         messages: List<LlmTurnMessage>,
         tools: List<ToolSpec>,
         latestUserPrompt: String,
+        sessionId: String? = null,
         onDelta: (String) -> Unit
     ): RoutedLlmResult {
         val candidates = buildCandidateOrder(
@@ -94,7 +104,8 @@ class AuraRouter {
             activeProviderId = activeProviderId,
             config = config,
             prompt = latestUserPrompt,
-            hasTools = tools.isNotEmpty()
+            hasTools = tools.isNotEmpty(),
+            sessionId = sessionId
         )
         if (candidates.isEmpty()) {
             throw IllegalStateException("No configured API provider found. Add an API key in Settings.")
@@ -114,6 +125,7 @@ class AuraRouter {
                 )
                 val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(1L)
                 recordSuccess(provider.id, elapsed)
+                if (sessionId != null) sessionAffinity[sessionId] = provider.id
                 return RoutedLlmResult(
                     response = response,
                     usedProvider = provider,
@@ -176,10 +188,8 @@ class AuraRouter {
     private fun scoreProviderForComplexity(p: ProviderConfig, complex: Boolean, isActive: Boolean): Int {
         var score = if (isActive) 25 else 0
         val m = p.model.lowercase()
-        val isFlagship = m.contains("pro") || m.contains("sonnet") || m.contains("opus") ||
-            m.contains("gpt-4o") && !m.contains("mini") || m.contains("r1") || m.contains("reasoner")
-        val isFast = m.contains("flash") || m.contains("mini") || m.contains("haiku") ||
-            m.contains("groq") || m.contains("7b") || m.contains("8b") || m.contains("llama-3.2")
+        val isFlagship = m.contains("pro") || m.contains("sonnet") || m.contains("opus") || m.contains("argon") || m.contains("gpt-6") || m.contains("grok-4.7") || m.contains("405b") || m.contains("codex")
+        val isFast = m.contains("flash") || m.contains("lite") || m.contains("mini") || m.contains("haiku") || m.contains("8b") || m.contains("32b")
 
         if (complex && isFlagship) score += 40
         if (!complex && isFast) score += 40

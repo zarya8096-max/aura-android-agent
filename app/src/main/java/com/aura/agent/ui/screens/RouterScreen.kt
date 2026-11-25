@@ -120,7 +120,7 @@ fun RouterScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Cache Hit Rate: ${stats.hitRatePercent}%",
+                            text = "Local Hit: ${stats.hitRatePercent}% · KV Prefix: ${if (stats.totalInputTokens > 0) ((stats.serverCachedTokens * 100L) / stats.totalInputTokens).toInt().coerceIn(0, 100) else 0}%",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary

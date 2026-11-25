@@ -152,4 +152,28 @@ class AuraCoreUnitTest {
         assertNotNull(hit)
         assertTrue(hit!!.similarityScore >= 0.72f)
     }
+
+    @Test
+    fun testTimeSensitiveQueryBypassesStaleCache() {
+        assertTrue(AuraCacheEngine.isTimeSensitiveQuery("What is the weather right now?"))
+        assertTrue(AuraCacheEngine.isTimeSensitiveQuery("الان ساعت چنده؟"))
+        val cfg = RouterConfig(exactCacheEnabled = true, semanticCacheEnabled = true)
+        val sys = AuraCacheEngine.sha256Short("s")
+        val ctx = AuraCacheEngine.sha256Short("c")
+        val entries = AuraCacheEngine.putEntry(emptyList(), cfg, "", sys, ctx, "الان ساعت چنده؟", "12:00", "Gemini")
+        val hit = AuraCacheEngine.lookup(entries, cfg, "", sys, ctx, "الان ساعت چنده؟")
+        org.junit.Assert.assertNull(hit)
+    }
+
+    @Test
+    fun testLatest2026DefaultModelsAndPureBranding() {
+        val providers = com.aura.agent.data.Defaults.defaultProviders()
+        assertTrue(providers.any { it.id == "gemini" && it.model == "gemini-3-8-flash" })
+        assertTrue(providers.any { it.id == "openai" && it.model == "gpt-6.2-sol" })
+        assertTrue(providers.any { it.id == "anthropic" && it.model == "claude-sonnet-5" })
+        assertTrue(providers.any { it.id == "deepseek" && it.model == "deepseek-v4.1-flash" })
+        assertTrue(providers.any { it.id == "xai" && it.model == "grok-4.7" })
+        val gems = com.aura.agent.data.Defaults.defaultGems()
+        assertTrue(gems.none { it.name.contains("Hermes", ignoreCase = true) })
+    }
 }

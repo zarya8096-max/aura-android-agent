@@ -33,6 +33,7 @@ import com.aura.agent.hf.HfGgufFile
 import com.aura.agent.hf.HfModelSummary
 import com.aura.agent.hf.HuggingFaceClient
 import com.aura.agent.network.LlmTurnMessage
+import com.aura.agent.network.ModelCatalogService
 import com.aura.agent.router.AuraCacheEngine
 import com.aura.agent.router.AuraRouter
 import com.aura.agent.router.LocalApiGateway
@@ -500,21 +501,50 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testProviderConnection(provider: ProviderConfig) {
         viewModelScope.launch {
-            _state.update { it.copy(providerTestStatus = "Testing ${provider.name}...") }
+            _state.update { it.copy(providerTestStatus = "Syncing live models for ${provider.name}...") }
             try {
-                val models = hfClient.probeLocalServer(provider.baseUrl, provider.apiKey)
-                val msg = if (models.isNotEmpty()) {
-                    "Connected! Found ${models.size} models (e.g. ${models.take(3).joinToString(", ")})"
-                } else {
-                    "Connected to ${provider.baseUrl} (OK)"
+                val models = ModelCatalogService.fetchLiveModels(provider)
+                val merged = (models + provider.availableModels).distinct().take(40)
+                if (merged.isNotEmpty()) {
+                    updateProvider(provider.copy(availableModels = merged))
                 }
-                if (models.isNotEmpty()) {
-                    updateProvider(provider.copy(availableModels = models.take(25)))
+                val msg = if (models.isNotEmpty()) {
+                    "Synced ${models.size} live models from ${provider.name} (top: ${models.take(3).joinToString(", ")})"
+                } else {
+                    "Connected to ${provider.name} (OK)"
                 }
                 _state.update { it.copy(providerTestStatus = msg) }
             } catch (e: Exception) {
-                _state.update { it.copy(providerTestStatus = "Connection test failed: ${e.message}") }
+                _state.update { it.copy(providerTestStatus = "Sync failed for ${provider.name}: ${e.message}") }
             }
+        }
+    }
+
+    fun refreshAllProviderModels() {
+        viewModelScope.launch {
+            val configured = _state.value.providers.filter { router.isConfigured(it) }
+            if (configured.isEmpty()) {
+                _state.update { it.copy(providerTestStatus = "Add at least one API key first to sync live models.") }
+                return@launch
+            }
+            _state.update { it.copy(providerTestStatus = "Syncing live models for ${configured.size} providers...") }
+            var okCount = 0
+            var totalFound = 0
+            for (p in configured) {
+                runCatching {
+                    val live = ModelCatalogService.fetchLiveModels(p)
+                    if (live.isNotEmpty()) {
+                        okCount++
+                        totalFound += live.size
+                        val merged = (live + p.availableModels).distinct().take(40)
+                        _state.update { s ->
+                            s.copy(providers = s.providers.map { if (it.id == p.id) it.copy(availableModels = merged) else it })
+                        }
+                    }
+                }
+            }
+            persist()
+            _state.update { it.copy(providerTestStatus = "Model catalog updated: $totalFound models synced across $okCount providers.") }
         }
     }
 
@@ -813,7 +843,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         }
         persist()
 
-        val toolSpecs = skillExecutor.buildToolSpecs(enabledSkills)
+        val toolSpecs = skillExecutor.buildToolSpecs(enabledSkills).sortedBy { it.name }
 
         activeJob = viewModelScope.launch {
             try {
@@ -838,6 +868,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                         messages = historyTurns,
                         tools = toolSpecs,
                         latestUserPrompt = prompt,
+                        sessionId = sessionId,
                         onDelta = { delta ->
                             streamedBuffer.append(delta)
                             updateAssistantMessage(
@@ -1034,14 +1065,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             val visibleMemories = s.memories.filter { m ->
                 m.scope == "global" || (activeGemId != null && m.sourceGemId == activeGemId)
             }
-            val normPrompt = AuraCacheEngine.normalizeText(prompt)
-            val promptWords = normPrompt.split(' ').filter { it.length >= 3 }.toSet()
-            val pinned = visibleMemories.filter { it.pinned }
-            val relevant = visibleMemories.filter { !it.pinned }.filter { mem ->
-                val hay = AuraCacheEngine.normalizeText("${mem.key} ${mem.content} ${mem.category}")
-                promptWords.any { hay.contains(it) }
-            }.take(6)
-            val injectedMemories = (pinned + relevant).distinctBy { it.id }.take(12)
+            // Phase 1 Immutable Prefix: keep system memory block strictly deterministic & sorted so KV-cache never invalidates mid-session
+            val injectedMemories = visibleMemories
+                .sortedWith(compareByDescending<MemoryEntry> { it.pinned }.thenBy { it.category }.thenBy { it.key })
+                .take(16)
             if (injectedMemories.isNotEmpty()) {
                 sb.appendLine("# Active Long-Term Memory (MEMORY.md)")
                 for (m in injectedMemories) {
@@ -1257,7 +1284,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     "edit", "open" -> navigateTo(ActiveScreen.AGENT_BRAIN)
                     "reset" -> {
                         updateSoulMarkdown(Defaults.DEFAULT_SOUL_MD)
-                        appendLocalCommandReply(raw, "SOUL.md reset to Hermes default.", "Command · /soul")
+                        appendLocalCommandReply(raw, "SOUL.md reset to Aura default.", "Command · /soul")
                     }
                     else -> {
                         appendLocalCommandReply(raw, _state.value.soulMarkdown, "Command · /soul")
@@ -1433,7 +1460,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     val policies = _state.value.toolPolicies
                     val summary = if (policies.isEmpty()) "All tools default to Auto-Allow."
                     else policies.entries.joinToString("\n") { "- `${it.key}`: ${it.value.label}" }
-                    appendLocalCommandReply(raw, "OpenBot Tool Policies:\n$summary\n\nUsage: `/policy http_fetch ask`", "Command · /policy")
+                    appendLocalCommandReply(raw, "Action Policies:\n$summary\n\nUsage: `/policy http_fetch ask`", "Command · /policy")
                 }
                 return true
             }

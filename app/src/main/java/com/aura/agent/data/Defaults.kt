@@ -1,14 +1,14 @@
 package com.aura.agent.data
 
 object Defaults {
-    const val DEFAULT_SOUL_MD = """# SOUL.md — Core Agent Identity
+    const val DEFAULT_SOUL_MD = """# SOUL.md — Aura Core Identity
 
 ## Voice & Stance
 - Be direct, analytical, and grounded — act like a sharp peer collaborator, never a sycophantic assistant.
 - Challenge weak assumptions constructively when warranted instead of defaulting to automatic agreement.
 - Match the user's language naturally (Persian or English) with crisp formatting and zero filler.
 
-## Autonomous Execution (Hermes Principles)
+## Autonomous Execution
 - Break complex requests into concrete tool calls before answering.
 - Proactively store enduring user preferences, project facts, and verified findings in structured memory using `memory_save`.
 - Before answering questions about past projects or preferences, check `memory_search`.
@@ -26,50 +26,13 @@ object Defaults {
             name = "Google Gemini",
             protocol = ApiProtocol.GEMINI,
             baseUrl = "https://generativelanguage.googleapis.com/v1beta",
-            model = "gemini-2.5-flash",
-            availableModels = listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash")
-        ),
-        ProviderConfig(
-            id = "nous-portal",
-            name = "Nous Portal (Hermes API)",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://inference-api.nousresearch.com/v1",
-            model = "Hermes-3-Llama-3.1-70B",
+            model = "gemini-3-8-flash",
             availableModels = listOf(
-                "Hermes-3-Llama-3.1-70B",
-                "Hermes-3-Llama-3.1-405B",
-                "DeepHermes-3-Llama-3-8B-Preview"
-            )
-        ),
-        ProviderConfig(
-            id = "openai-codex",
-            name = "OpenAI Codex",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://api.openai.com/v1",
-            model = "codex-mini-latest",
-            availableModels = listOf("codex-mini-latest", "o4-mini", "gpt-4.1", "gpt-4o")
-        ),
-        ProviderConfig(
-            id = "google-antigravity",
-            name = "Google Antigravity / Gemini",
-            protocol = ApiProtocol.GEMINI,
-            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
-            model = "gemini-2.5-pro",
-            availableModels = listOf("gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash")
-        ),
-        ProviderConfig(
-            id = "openrouter",
-            name = "OpenRouter (200+ Models & Free Tier)",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://openrouter.ai/api/v1",
-            model = "google/gemini-2.5-flash",
-            availableModels = listOf(
-                "google/gemini-2.5-flash",
-                "anthropic/claude-3.7-sonnet",
-                "deepseek/deepseek-r1:free",
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "qwen/qwen-2.5-coder-32b-instruct:free",
-                "openai/gpt-4o-mini"
+                "gemini-3-8-flash",
+                "gemini-4-argon",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3-pro-preview"
             )
         ),
         ProviderConfig(
@@ -77,24 +40,80 @@ object Defaults {
             name = "OpenAI",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "https://api.openai.com/v1",
-            model = "gpt-4o-mini",
-            availableModels = listOf("gpt-4o-mini", "gpt-4o", "o3-mini")
+            model = "gpt-6.2-sol",
+            availableModels = listOf(
+                "gpt-6.2-sol",
+                "gpt-6.1-sol",
+                "gpt-5.4",
+                "gpt-5.4-mini"
+            )
+        ),
+        ProviderConfig(
+            id = "openai-codex",
+            name = "OpenAI Codex",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.openai.com/v1",
+            model = "gpt-5.3-codex",
+            availableModels = listOf("gpt-5.3-codex", "gpt-5.2-codex", "gpt-6.2-sol")
         ),
         ProviderConfig(
             id = "anthropic",
             name = "Anthropic Claude",
             protocol = ApiProtocol.ANTHROPIC,
             baseUrl = "https://api.anthropic.com/v1",
-            model = "claude-3-7-sonnet-latest",
-            availableModels = listOf("claude-3-7-sonnet-latest", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest")
+            model = "claude-sonnet-5",
+            availableModels = listOf(
+                "claude-sonnet-5",
+                "claude-opus-5-5",
+                "claude-opus-4-6",
+                "claude-sonnet-4-6"
+            )
         ),
         ProviderConfig(
             id = "deepseek",
             name = "DeepSeek",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "https://api.deepseek.com/v1",
-            model = "deepseek-chat",
-            availableModels = listOf("deepseek-chat", "deepseek-reasoner")
+            model = "deepseek-v4.1-flash",
+            availableModels = listOf("deepseek-v4.1-flash", "deepseek-pro-latest", "deepseek-v4", "deepseek-v3.2")
+        ),
+        ProviderConfig(
+            id = "xai",
+            name = "xAI (Grok)",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.x.ai/v1",
+            model = "grok-4.7",
+            availableModels = listOf("grok-4.7", "grok-4.6", "grok-4.5", "grok-4.3")
+        ),
+        ProviderConfig(
+            id = "openrouter",
+            name = "OpenRouter (Unified Catalog)",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://openrouter.ai/api/v1",
+            model = "google/gemini-3-8-flash",
+            availableModels = listOf(
+                "google/gemini-3-8-flash",
+                "anthropic/claude-sonnet-5",
+                "openai/gpt-6.2-sol",
+                "deepseek/deepseek-v4.1-flash",
+                "x-ai/grok-4.7"
+            )
+        ),
+        ProviderConfig(
+            id = "nous-portal",
+            name = "Nous Portal",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://inference-api.nousresearch.com/v1",
+            model = "Hermes-4-70B",
+            availableModels = listOf("Hermes-4-70B", "Hermes-4-405B", "Hermes-4.3-36B")
+        ),
+        ProviderConfig(
+            id = "google-antigravity",
+            name = "Google Antigravity / AI Studio",
+            protocol = ApiProtocol.GEMINI,
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
+            model = "gemini-4-argon",
+            availableModels = listOf("gemini-4-argon", "gemini-3-8-flash", "gemini-3-pro-preview")
         ),
         ProviderConfig(
             id = "groq",
@@ -105,36 +124,12 @@ object Defaults {
             availableModels = listOf("llama-3.3-70b-versatile", "qwen-2.5-32b")
         ),
         ProviderConfig(
-            id = "xai",
-            name = "xAI (Grok)",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://api.x.ai/v1",
-            model = "grok-2-latest",
-            availableModels = listOf("grok-2-latest", "grok-2-mini")
-        ),
-        ProviderConfig(
             id = "mistral",
             name = "Mistral AI",
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "https://api.mistral.ai/v1",
             model = "mistral-large-latest",
             availableModels = listOf("mistral-large-latest", "codestral-latest")
-        ),
-        ProviderConfig(
-            id = "together",
-            name = "Together AI",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://api.together.xyz/v1",
-            model = "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-            availableModels = listOf("meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-Coder-32B-Instruct")
-        ),
-        ProviderConfig(
-            id = "cerebras",
-            name = "Cerebras",
-            protocol = ApiProtocol.OPENAI_COMPATIBLE,
-            baseUrl = "https://api.cerebras.ai/v1",
-            model = "llama-3.3-70b",
-            availableModels = listOf("llama-3.3-70b", "llama3.1-8b")
         ),
         ProviderConfig(
             id = "local-gguf",
@@ -151,19 +146,19 @@ object Defaults {
             protocol = ApiProtocol.OPENAI_COMPATIBLE,
             baseUrl = "http://127.0.0.1:11434/v1",
             apiKey = "ollama",
-            model = "llama3.2",
-            availableModels = listOf("llama3.2", "qwen2.5-coder:7b", "deepseek-r1:8b")
+            model = "qwen3:8b",
+            availableModels = listOf("qwen3:8b", "llama3.3", "deepseek-r1:8b")
         )
     )
 
     fun defaultGems(): List<Gem> = listOf(
         Gem(
-            id = "gem-hermes",
-            name = "Hermes Autonomous",
-            description = "Full multi-step agent using memory, web search, HTTP fetch, and local workspace.",
-            instructions = "Operate as an autonomous Hermes-class agent. Plan multi-step tool execution, verify live facts via web_search/http_fetch, store key learnings in memory_save, and keep final replies concise.",
+            id = "gem-autonomous",
+            name = "Aura Autonomous",
+            description = "Multi-step agent using memory, web search, HTTP fetch, and local workspace.",
+            instructions = "Operate as an autonomous multi-step agent. Plan tool execution, verify live facts via web_search/http_fetch, store key learnings in memory_save, and keep final replies concise.",
             iconName = "hub",
-            accentHex = 0xFF7AB8FF,
+            accentHex = 0xFF8AB4F8,
             defaultSkillIds = listOf("skill-http-fetch", "skill-web-search", "skill-memory", "skill-workspace", "skill-calculator", "skill-device-time"),
             isBuiltIn = true
         ),
@@ -180,8 +175,8 @@ object Defaults {
         Gem(
             id = "gem-writer",
             name = "Editorial Craft",
-            description = "Sharp, human prose without AI-slop cliches.",
-            instructions = "You are a ruthless, tasteful editor. Preserve the author's voice, cut filler, and avoid generic AI phrasing.",
+            description = "Sharp, natural prose without generic AI cliches.",
+            instructions = "You are a sharp, tasteful editor. Preserve the author's voice, cut filler, and avoid generic phrasing.",
             iconName = "edit",
             accentHex = 0xFF9EC5AB,
             isBuiltIn = true
@@ -200,9 +195,9 @@ object Defaults {
     fun defaultSkills(): List<AgentSkill> = listOf(
         AgentSkill(
             id = "skill-subagent",
-            name = "Subagent Delegation (dsh)",
+            name = "Subagent Delegation",
             slug = "spawn_subagent",
-            description = "Delegates an isolated subtask to a focused subagent (DeepSeek Harness pattern) and returns its result.",
+            description = "Delegates an isolated subtask to a specialized subagent and returns its result.",
             type = SkillType.BUILTIN_TOOL,
             enabled = true,
             isBuiltIn = true
@@ -227,7 +222,7 @@ object Defaults {
         ),
         AgentSkill(
             id = "skill-memory",
-            name = "Hermes Long-Term Memory",
+            name = "Long-Term Memory",
             slug = "memory_notes",
             description = "Structured memory_save, memory_search, and memory_delete tools across sessions.",
             type = SkillType.BUILTIN_TOOL,

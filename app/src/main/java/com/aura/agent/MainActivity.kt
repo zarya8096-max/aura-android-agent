@@ -148,7 +148,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         Spacer(modifier = Modifier.height(10.dp))
 
                         NavigationDrawerItem(
-                            label = { Text("Agent Brain (SOUL & Memory)") },
+                            label = { Text("Aura Brain (SOUL & Memory)") },
                             selected = state.activeScreen == ActiveScreen.AGENT_BRAIN,
                             onClick = {
                                 vm.navigateTo(ActiveScreen.AGENT_BRAIN)
@@ -377,7 +377,8 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onSelectProvider = { vm.selectProvider(it) },
                         onSaveProvider = { vm.updateProvider(it) },
                         onDeleteProvider = { vm.deleteProvider(it) },
-                        onTestProvider = { vm.testProviderConnection(it) }
+                        onTestProvider = { vm.testProviderConnection(it) },
+                        onRefreshAllModels = { vm.refreshAllProviderModels() }
                     )
                 }
             }

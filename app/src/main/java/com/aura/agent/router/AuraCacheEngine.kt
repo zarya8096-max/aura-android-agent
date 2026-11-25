@@ -65,6 +65,17 @@ object AuraCacheEngine {
         return bytes.take(8).joinToString("") { "%02x".format(it) }
     }
 
+
+    private val volatileMarkers = listOf(
+        "right now", "today", "current time", "latest news", "weather", "stock price",
+        "الان", "امروز", "ساعت چنده", "قیمت لحظه", "آب و هوا", "اخبار امروز"
+    )
+
+    fun isTimeSensitiveQuery(prompt: String): Boolean {
+        val norm = normalizeText(prompt)
+        return volatileMarkers.any { norm.contains(it) }
+    }
+
     fun isStandaloneQuery(prompt: String): Boolean {
         val norm = normalizeText(prompt)
         val contextRefs = listOf("this", "that", "above", "it ", "این ", "اون ", "قبلی", "بالا", "ادامه")
@@ -81,6 +92,7 @@ object AuraCacheEngine {
         nowMs: Long = System.currentTimeMillis()
     ): CacheLookupResult? {
         if (!config.exactCacheEnabled && !config.semanticCacheEnabled) return null
+        if (isTimeSensitiveQuery(prompt)) return null
         val normPrompt = normalizeText(prompt)
         if (normPrompt.length < 3) return null
 
