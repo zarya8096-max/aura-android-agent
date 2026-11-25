@@ -32,7 +32,17 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -69,8 +79,9 @@ fun ChatScreen(
     state: AuraUiState,
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
-    onToggleDarkLight: () -> Unit,
-    onSelectProvider: (String) -> Unit,
+    onToggleDarkLight: (Boolean) -> Unit,
+    onSelectProviderAndModel: (String, String) -> Unit,
+    onSyncProviderModels: (com.aura.agent.data.ProviderConfig) -> Unit,
     onSendMessage: (String) -> Unit,
     onStop: () -> Unit,
     onLaunchGem: (String) -> Unit,
@@ -136,35 +147,14 @@ fun ChatScreen(
                             }
                         }
 
-                        DropdownMenu(
-                            expanded = showModelMenu,
-                            onDismissRequest = { showModelMenu = false }
-                        ) {
-                            state.providers.forEach { p ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(p.name, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                p.model,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        onSelectProvider(p.id)
-                                        showModelMenu = false
-                                    }
-                                )
-                            }
-                        }
+                        // Model picker opens as a clean 2-step Provider -> Models Bottom Sheet below
                     }
                 },
                 actions = {
-                    IconButton(onClick = onToggleDarkLight) {
+                    val isDarkNow = if (state.themePreset == com.aura.agent.data.AppThemePreset.SYSTEM_DEFAULT) isSystemInDarkTheme() else state.themePreset.isDark
+                    IconButton(onClick = { onToggleDarkLight(isDarkNow) }) {
                         Icon(
-                            imageVector = if (state.themePreset.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                            imageVector = if (isDarkNow) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
                             contentDescription = "Toggle Dark/Light Theme",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -223,6 +213,100 @@ fun ChatScreen(
                 items(messages, key = { it.id }) { msg ->
                     MessageItem(message = msg)
                 }
+            }
+        }
+    }
+
+
+    if (showModelMenu) {
+        var selectedSheetProviderId by remember(state.activeProviderId) { mutableStateOf(state.activeProviderId) }
+        val sheetProvider = state.providers.firstOrNull { it.id == selectedSheetProviderId } ?: state.providers.firstOrNull()
+        ModalBottomSheet(
+            onDismissRequest = { showModelMenu = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Select Provider & Model", style = MaterialTheme.typography.titleLarge)
+                    if (sheetProvider != null) {
+                        IconButton(onClick = { onSyncProviderModels(sheetProvider) }) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "Sync Live Models")
+                        }
+                    }
+                }
+
+                // Step 1: Providers horizontal strip
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.providers, key = { it.id }) { p ->
+                        val configured = p.apiKey.isNotBlank() || p.baseUrl.contains("127.0.0.1") || p.baseUrl.contains("localhost")
+                        FilterChip(
+                            selected = p.id == sheetProvider?.id,
+                            onClick = { selectedSheetProviderId = p.id },
+                            label = { Text(if (configured) "${p.name} •" else p.name) }
+                        )
+                    }
+                }
+
+                // Step 2: Dedicated model list for the selected provider
+                if (sheetProvider != null) {
+                    val models = (listOf(sheetProvider.model) + sheetProvider.availableModels).distinct()
+                    Text(
+                        text = "${sheetProvider.name} Models (${models.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp)
+                    ) {
+                        items(models, key = { "${sheetProvider.id}_$it" }) { modelId ->
+                            val isSelected = sheetProvider.id == state.activeProviderId && sheetProvider.model == modelId
+                            Surface(
+                                onClick = {
+                                    onSelectProviderAndModel(sheetProvider.id, modelId)
+                                    showModelMenu = false
+                                },
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = modelId,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = "Active",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
             }
         }
     }

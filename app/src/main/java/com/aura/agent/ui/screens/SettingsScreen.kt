@@ -36,8 +36,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -62,7 +64,7 @@ fun SettingsScreen(
     themePreset: AppThemePreset,
     testStatus: String?,
     onBack: () -> Unit,
-    onToggleDarkLight: () -> Unit,
+    onToggleDarkLight: (Boolean) -> Unit,
     onSelectTheme: (AppThemePreset) -> Unit,
     onSelectProvider: (String) -> Unit,
     onSaveProvider: (ProviderConfig) -> Unit,
@@ -121,13 +123,16 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Dark Mode", style = MaterialTheme.typography.titleMedium)
+                                val isDarkNow = if (themePreset == AppThemePreset.SYSTEM_DEFAULT) isSystemInDarkTheme() else themePreset.isDark
                                 Text(
-                                    if (themePreset.isDark) "Dark theme active" else "Light theme active",
+                                    if (themePreset == AppThemePreset.SYSTEM_DEFAULT) "Following system (${if (isDarkNow) "Dark" else "Light"})"
+                                    else if (isDarkNow) "Dark theme active" else "Light theme active",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Switch(checked = themePreset.isDark, onCheckedChange = { onToggleDarkLight() })
+                            val isDarkSwitch = if (themePreset == AppThemePreset.SYSTEM_DEFAULT) isSystemInDarkTheme() else themePreset.isDark
+                            Switch(checked = isDarkSwitch, onCheckedChange = { onToggleDarkLight(isDarkSwitch) })
                         }
                         Text("Palette Style", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

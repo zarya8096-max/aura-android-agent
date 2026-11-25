@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.aura.agent.data.AppThemePreset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -117,9 +119,10 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("Aura", style = MaterialTheme.typography.titleLarge)
                             }
-                            IconButton(onClick = { vm.toggleDarkLightMode() }) {
+                            val drawerDarkNow = if (state.themePreset == AppThemePreset.SYSTEM_DEFAULT) isSystemInDarkTheme() else state.themePreset.isDark
+                            IconButton(onClick = { vm.toggleDarkLightMode(drawerDarkNow) }) {
                                 Icon(
-                                    imageVector = if (state.themePreset.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                                    imageVector = if (drawerDarkNow) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
                                     contentDescription = "Toggle Light/Dark Mode"
                                 )
                             }
@@ -299,8 +302,9 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         state = state,
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onNewChat = { vm.startNewChat(null) },
-                        onToggleDarkLight = { vm.toggleDarkLightMode() },
-                        onSelectProvider = { vm.selectProvider(it) },
+                        onToggleDarkLight = { vm.toggleDarkLightMode(it) },
+                        onSelectProviderAndModel = { pid, mid -> vm.selectProviderAndModel(pid, mid) },
+                        onSyncProviderModels = { vm.testProviderConnection(it) },
                         onSendMessage = { vm.sendMessage(it) },
                         onStop = { vm.stopGeneration() },
                         onLaunchGem = { vm.startNewChat(it) },
@@ -354,10 +358,12 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                     )
                     ActiveScreen.GEMS -> GemsScreen(
                         gems = state.gems,
+                        skills = state.skills,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
                         onLaunchGem = { vm.startNewChat(it) },
                         onSaveGem = { vm.saveGem(it) },
-                        onDeleteGem = { vm.deleteGem(it) }
+                        onDeleteGem = { vm.deleteGem(it) },
+                        onRewriteInstructions = { rough, cb -> vm.rewriteGemInstructions(rough, cb) }
                     )
                     ActiveScreen.SKILLS -> SkillsScreen(
                         skills = state.skills,
@@ -394,7 +400,7 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         themePreset = state.themePreset,
                         testStatus = state.providerTestStatus,
                         onBack = { vm.navigateTo(ActiveScreen.CHAT) },
-                        onToggleDarkLight = { vm.toggleDarkLightMode() },
+                        onToggleDarkLight = { vm.toggleDarkLightMode(it) },
                         onSelectTheme = { vm.setThemePreset(it) },
                         onSelectProvider = { vm.selectProvider(it) },
                         onSaveProvider = { vm.updateProvider(it) },

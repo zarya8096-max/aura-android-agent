@@ -79,7 +79,7 @@ class LocalStore(context: Context) {
             soulMarkdown = Defaults.DEFAULT_SOUL_MD,
             userProfileMarkdown = Defaults.DEFAULT_USER_MD,
             localModels = emptyList(),
-            themePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
+            themePreset = AppThemePreset.SYSTEM_DEFAULT,
             subagents = Defaults.defaultSubagents()
         )
     }

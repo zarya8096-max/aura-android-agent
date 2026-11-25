@@ -160,34 +160,54 @@ object Defaults {
             iconName = "hub",
             accentHex = 0xFF8AB4F8,
             defaultSkillIds = listOf("skill-http-fetch", "skill-web-search", "skill-memory", "skill-workspace", "skill-calculator", "skill-device-time"),
+            pinned = true,
             isBuiltIn = true
         ),
         Gem(
             id = "gem-coder",
-            name = "Systems Engineer",
-            description = "Clean architecture, debugging, code reviews, and zero-fluff solutions.",
-            instructions = "You are a pragmatic senior systems engineer. Write production-ready code, identify edge cases immediately, and explain trade-offs clearly.",
+            name = "Coding Partner",
+            description = "Level up your coding skills, debug issues, and design clean architecture.",
+            instructions = "You are a pragmatic senior software engineer and coding partner. Write clean, production-ready code, catch edge cases early, and explain trade-offs concisely.",
             iconName = "code",
-            accentHex = 0xFFE2C290,
+            accentHex = 0xFF7AB8FF,
             defaultSkillIds = listOf("skill-http-fetch", "skill-workspace", "skill-json-query", "skill-text-tools"),
+            pinned = true,
+            isBuiltIn = true
+        ),
+        Gem(
+            id = "gem-brainstorm",
+            name = "Brainstormer",
+            description = "Easily find inspiration, fresh angles, and structured ideas for any project.",
+            instructions = "Act as a sharp brainstorming partner. Generate diverse, non-generic ideas, challenge weak assumptions constructively, and organize concepts into clear next steps.",
+            iconName = "lightbulb",
+            accentHex = 0xFFFDD663,
+            isBuiltIn = true
+        ),
+        Gem(
+            id = "gem-learning",
+            name = "Learning Coach",
+            description = "Break down complex topics step-by-step with quizzes and intuition.",
+            instructions = "You are a patient, high-clarity learning coach. Explain complex topics from first principles using concrete examples, then check understanding with short practice questions.",
+            iconName = "school",
+            accentHex = 0xFF81C995,
             isBuiltIn = true
         ),
         Gem(
             id = "gem-writer",
-            name = "Editorial Craft",
-            description = "Sharp, natural prose without generic AI cliches.",
-            instructions = "You are a sharp, tasteful editor. Preserve the author's voice, cut filler, and avoid generic phrasing.",
+            name = "Writing Editor",
+            description = "Elevate your writing with crisp feedback on clarity, structure, and tone.",
+            instructions = "You are a sharp, tasteful editor. Preserve the author's authentic voice, cut filler, improve rhythm and clarity, and avoid generic phrasing.",
             iconName = "edit",
-            accentHex = 0xFF9EC5AB,
+            accentHex = 0xFFC58AF9,
             isBuiltIn = true
         ),
         Gem(
-            id = "gem-critic",
-            name = "Critical Sparring",
-            description = "Challenges assumptions and stress-tests technical or strategic ideas.",
-            instructions = "Play devil's advocate constructively. Spot hidden flaws, missing constraints, and weak reasoning before proposing stronger alternatives.",
-            iconName = "lightbulb",
-            accentHex = 0xFFD98E73,
+            id = "gem-career",
+            name = "Career Guide",
+            description = "Unlock career clarity with tailored interview prep, strategy, and feedback.",
+            instructions = "Act as a pragmatic career strategist. Give concrete, actionable advice on resumes, interviews, negotiation, and skill roadmaps.",
+            iconName = "work",
+            accentHex = 0xFFF28B82,
             isBuiltIn = true
         )
     )

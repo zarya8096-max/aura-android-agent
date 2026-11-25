@@ -88,7 +88,7 @@ data class AuraUiState(
     val hfLoading: Boolean = false,
     val hfError: String? = null,
     val activeDownload: DownloadProgress? = null,
-    val themePreset: AppThemePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
+    val themePreset: AppThemePreset = AppThemePreset.SYSTEM_DEFAULT,
     val isGenerating: Boolean = false,
     val activeScreen: ActiveScreen = ActiveScreen.CHAT,
     val routerConfig: RouterConfig = RouterConfig(),
@@ -375,9 +375,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { s -> s.copy(auditLogs = (listOf(entry) + s.auditLogs).take(100)) }
     }
 
-    fun toggleDarkLightMode() {
-        val curr = _state.value.themePreset
-        val next = if (curr.isDark) AppThemePreset.WARM_ALABASTER else AppThemePreset.GEMINI_MIDNIGHT
+    fun toggleDarkLightMode(currentlyDark: Boolean) {
+        val next = if (currentlyDark) AppThemePreset.WARM_ALABASTER else AppThemePreset.GEMINI_MIDNIGHT
         setThemePreset(next)
     }
 
@@ -870,6 +869,48 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
+
+    fun selectProviderAndModel(providerId: String, modelId: String) {
+        _state.update { s ->
+            s.copy(
+                activeProviderId = providerId,
+                providers = s.providers.map { p ->
+                    if (p.id == providerId) {
+                        p.copy(
+                            model = modelId,
+                            availableModels = (listOf(modelId) + p.availableModels).distinct()
+                        )
+                    } else p
+                }
+            )
+        }
+        persist()
+    }
+
+    fun rewriteGemInstructions(roughIdea: String, onResult: (String) -> Unit) {
+        if (roughIdea.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val prompt = "Rewrite and expand the following rough Gem idea into clear, structured, actionable system instructions (covering Persona, Task, Tone, and Constraints, 400-1200 chars). Match the language of the input:\n\n$roughIdea"
+                val routed = router.completeWithRouting(
+                    providers = _state.value.providers,
+                    activeProviderId = _state.value.activeProviderId,
+                    config = _state.value.routerConfig,
+                    systemPrompt = "You are an expert prompt engineer who crafts high-precision Gem instructions.",
+                    messages = listOf(LlmTurnMessage("user", prompt)),
+                    tools = emptyList(),
+                    latestUserPrompt = prompt,
+                    onDelta = {}
+                )
+                if (routed.response.text.isNotBlank()) {
+                    onResult(routed.response.text.trim())
+                }
+            } catch (_: Exception) {
+                // Keep original instructions if API unavailable
+            }
+        }
+    }
+
     fun selectProvider(providerId: String) {
         _state.update { it.copy(activeProviderId = providerId) }
         persist()
@@ -1343,10 +1384,20 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             ReasoningEffort.HIGH -> sb.appendLine("# Reasoning Effort: HIGH — Think deeply, verify edge cases, and delegate subtasks via spawn_subagent when helpful.")
         }
 
-        if (gem != null && gem.instructions.isNotBlank()) {
-            sb.appendLine("# Active Gem: ${gem.name}")
-            sb.appendLine(gem.instructions.trim())
-            sb.appendLine()
+        if (gem != null) {
+            if (gem.instructions.isNotBlank()) {
+                sb.appendLine("# Active Gem: ${gem.name}")
+                sb.appendLine(gem.instructions.trim())
+                sb.appendLine()
+            }
+            if (gem.knowledgeFiles.isNotEmpty()) {
+                sb.appendLine("# Gem Knowledge Files")
+                for (kf in gem.knowledgeFiles.sortedBy { it.name }) {
+                    sb.appendLine("## File: ${kf.name}")
+                    sb.appendLine(kf.content.take(6000))
+                    sb.appendLine()
+                }
+            }
         }
 
         val promptSkills = enabledSkills.filter { it.type == SkillType.PROMPT_SKILL && it.instructions.isNotBlank() }

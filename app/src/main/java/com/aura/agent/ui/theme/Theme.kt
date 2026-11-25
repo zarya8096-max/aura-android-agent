@@ -1,6 +1,7 @@
 package com.aura.agent.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -136,11 +137,13 @@ private val AuraTypography = Typography(
 
 @Composable
 fun AuraTheme(
-    preset: AppThemePreset = AppThemePreset.GEMINI_MIDNIGHT,
+    preset: AppThemePreset = AppThemePreset.SYSTEM_DEFAULT,
     content: @Composable () -> Unit
 ) {
-    val isDark = preset.isDark
+    val systemDark = isSystemInDarkTheme()
+    val isDark = if (preset == AppThemePreset.SYSTEM_DEFAULT) systemDark else preset.isDark
     val scheme = when (preset) {
+        AppThemePreset.SYSTEM_DEFAULT -> if (systemDark) GeminiDarkScheme else GeminiLightScheme
         AppThemePreset.WARM_ALABASTER -> GeminiLightScheme
         AppThemePreset.GEMINI_MIDNIGHT -> GeminiDarkScheme
         AppThemePreset.OBSIDIAN_GRAPHITE -> ObsidianDarkScheme

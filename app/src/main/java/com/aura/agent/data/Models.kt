@@ -52,10 +52,11 @@ data class AuditLogEntry(
 
 @Serializable
 enum class AppThemePreset(val label: String, val isDark: Boolean) {
-    OBSIDIAN_GRAPHITE("Obsidian Graphite", true),
-    GEMINI_MIDNIGHT("Gemini Midnight", true),
-    WARM_ALABASTER("Warm Alabaster", false),
-    SAGE_TERMINAL("Sage Terminal", true)
+    SYSTEM_DEFAULT("System Default", true),
+    GEMINI_MIDNIGHT("Dark", true),
+    WARM_ALABASTER("Light", false),
+    OBSIDIAN_GRAPHITE("Obsidian", true),
+    SAGE_TERMINAL("Sage", true)
 }
 
 @Serializable
@@ -144,6 +145,14 @@ data class ProviderConfig(
     val maxTokens: Int = 4096
 )
 
+
+@Serializable
+data class GemKnowledgeFile(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val content: String
+)
+
 @Serializable
 data class Gem(
     val id: String = UUID.randomUUID().toString(),
@@ -157,6 +166,8 @@ data class Gem(
     val useSoulMd: Boolean = true,
     val useMemoryMd: Boolean = true,
     val reasoningEffort: ReasoningEffort = ReasoningEffort.MEDIUM,
+    val knowledgeFiles: List<GemKnowledgeFile> = emptyList(),
+    val pinned: Boolean = false,
     val isBuiltIn: Boolean = false
 )
 
@@ -262,7 +273,7 @@ data class AppStateSnapshot(
     val soulMarkdown: String = "",
     val userProfileMarkdown: String = "",
     val localModels: List<DownloadedLocalModel> = emptyList(),
-    val themePreset: AppThemePreset = AppThemePreset.OBSIDIAN_GRAPHITE,
+    val themePreset: AppThemePreset = AppThemePreset.SYSTEM_DEFAULT,
     val routerConfig: RouterConfig = RouterConfig(),
     val cacheEntries: List<CacheEntry> = emptyList(),
     val routerStats: RouterStats = RouterStats(),
