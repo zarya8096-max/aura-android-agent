@@ -3,7 +3,10 @@ package com.aura.agent.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.aura.agent.commands.SlashCommandRegistry
 import com.aura.agent.data.AgentSkill
+import com.aura.agent.data.Defaults
+import com.aura.agent.data.RoutingMode
 import com.aura.agent.data.ApiProtocol
 import com.aura.agent.data.AppStateSnapshot
 import com.aura.agent.data.AppThemePreset
@@ -492,6 +495,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         val prompt = userText.trim()
         if (prompt.isEmpty() || _state.value.isGenerating) return
 
+        if (prompt.startsWith("/")) {
+            if (handleSlashCommand(prompt)) return
+        }
+
         val snap = _state.value
         val hasAnyConfigured = snap.providers.any { router.isConfigured(it) }
         if (!hasAnyConfigured) {
@@ -857,6 +864,343 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+    }
+
+
+    private fun handleSlashCommand(raw: String): Boolean {
+        val parts = raw.trim().split(Regex("\\s+"), limit = 2)
+        val cmd = parts[0].lowercase()
+        val arg = parts.getOrNull(1)?.trim().orEmpty()
+
+        when (cmd) {
+            "/help" -> {
+                appendLocalCommandReply(raw, SlashCommandRegistry.helpMarkdown(), "Command · /help")
+                return true
+            }
+            "/clear" -> {
+                val sid = _state.value.activeSessionId
+                if (sid != null) {
+                    _state.update { s ->
+                        s.copy(sessions = s.sessions.map { if (it.id == sid) it.copy(messages = emptyList()) else it })
+                    }
+                    persist()
+                }
+                return true
+            }
+            "/new" -> {
+                val gem = if (arg.isNotBlank()) {
+                    _state.value.gems.firstOrNull { it.name.contains(arg, ignoreCase = true) }
+                } else null
+                startNewChat(gem?.id)
+                return true
+            }
+            "/compact" -> {
+                runContextCompaction(raw, arg)
+                return true
+            }
+            "/context" -> {
+                val s = _state.value
+                val msgs = s.activeSession?.messages.orEmpty()
+                val chatTokens = msgs.sumOf { AuraCacheEngine.estimateTokens(it.content) }
+                val soulTokens = AuraCacheEngine.estimateTokens(s.soulMarkdown + s.userProfileMarkdown)
+                val memTokens = s.memories.sumOf { AuraCacheEngine.estimateTokens(it.key + it.content) }
+                val enabledTools = resolveEnabledSkills(s.activeGem).count { it.type != SkillType.PROMPT_SKILL }
+                val report = buildString {
+                    appendLine("Context Diagnostics:")
+                    appendLine("- Messages in thread: ${msgs.size}")
+                    appendLine("- Chat history tokens: ~$chatTokens")
+                    appendLine("- SOUL.md + USER.md: ~$soulTokens tokens")
+                    appendLine("- Stored memories (${s.memories.size}): ~$memTokens tokens")
+                    appendLine("- Active Gem: ${s.activeGem?.name ?: "None"}")
+                    appendLine("- Enabled Tools: $enabledTools")
+                    appendLine("- Active Provider: ${s.activeProvider?.name} (${s.activeProvider?.model})")
+                    appendLine()
+                    appendLine("Tip: Run /compact anytime to compress long history and save tokens.")
+                }.trim()
+                appendLocalCommandReply(raw, report, "Command · /context")
+                return true
+            }
+            "/model" -> {
+                val s = _state.value
+                if (arg.isBlank()) {
+                    val list = s.providers.joinToString("\n") { p ->
+                        val active = if (p.id == s.activeProviderId) " (active)" else ""
+                        "- ${p.name}: ${p.model}$active"
+                    }
+                    appendLocalCommandReply(raw, "Configured Providers:\n$list\n\nUse `/model <name>` to switch.", "Command · /model")
+                } else {
+                    val match = s.providers.firstOrNull {
+                        it.name.contains(arg, ignoreCase = true) ||
+                            it.id.contains(arg, ignoreCase = true) ||
+                            it.model.contains(arg, ignoreCase = true)
+                    }
+                    if (match != null) {
+                        selectProvider(match.id)
+                        appendLocalCommandReply(raw, "Switched active provider to **${match.name}** (`${match.model}`).", "Command · /model")
+                    } else {
+                        appendLocalCommandReply(raw, "No provider matching '$arg'. Run `/model` to list available providers.", "Command · /model")
+                    }
+                }
+                return true
+            }
+            "/gem" -> {
+                val s = _state.value
+                when {
+                    arg.isBlank() -> {
+                        val list = s.gems.joinToString("\n") { g -> "- ${g.name}: ${g.description}" }
+                        appendLocalCommandReply(raw, "Available Gems:\n$list\n\nUse `/gem <name>` or `/gem off`.", "Command · /gem")
+                    }
+                    arg.equals("off", ignoreCase = true) -> {
+                        _state.update { it.copy(activeGemId = null) }
+                        appendLocalCommandReply(raw, "Active Gem cleared.", "Command · /gem")
+                    }
+                    else -> {
+                        val match = s.gems.firstOrNull { it.name.contains(arg, ignoreCase = true) }
+                        if (match != null) {
+                            startNewChat(match.id)
+                        } else {
+                            appendLocalCommandReply(raw, "No Gem matching '$arg'.", "Command · /gem")
+                        }
+                    }
+                }
+                return true
+            }
+            "/remember" -> {
+                if (arg.isBlank()) {
+                    appendLocalCommandReply(raw, "Usage: `/remember key: fact to remember`", "Command · /remember")
+                } else {
+                    val idx = arg.indexOf(':')
+                    val (k, v) = if (idx > 0) {
+                        arg.substring(0, idx).trim() to arg.substring(idx + 1).trim()
+                    } else {
+                        "note_${System.currentTimeMillis() % 10000}" to arg
+                    }
+                    upsertMemory(k, v, "general", emptyList(), pinned = true)
+                    appendLocalCommandReply(raw, "Pinned to long-term memory: **$k** -> $v", "Command · /remember")
+                }
+                return true
+            }
+            "/memory" -> {
+                if (arg.equals("open", ignoreCase = true)) {
+                    navigateTo(ActiveScreen.AGENT_BRAIN)
+                    return true
+                }
+                val mems = _state.value.memories
+                val matched = if (arg.isBlank()) mems else mems.filter {
+                    it.key.contains(arg, ignoreCase = true) || it.content.contains(arg, ignoreCase = true)
+                }
+                val text = if (matched.isEmpty()) {
+                    "No matching memories. Use `/remember key: fact` to save one."
+                } else {
+                    matched.take(15).joinToString("\n") { m ->
+                        val pin = if (m.pinned) "[Pinned] " else ""
+                        "- $pin[${m.category}] ${m.key}: ${m.content}"
+                    }
+                }
+                appendLocalCommandReply(raw, text, "Command · /memory")
+                return true
+            }
+            "/soul" -> {
+                when (arg.lowercase()) {
+                    "edit", "open" -> navigateTo(ActiveScreen.AGENT_BRAIN)
+                    "reset" -> {
+                        updateSoulMarkdown(Defaults.DEFAULT_SOUL_MD)
+                        appendLocalCommandReply(raw, "SOUL.md reset to Hermes default.", "Command · /soul")
+                    }
+                    else -> {
+                        appendLocalCommandReply(raw, _state.value.soulMarkdown, "Command · /soul")
+                    }
+                }
+                return true
+            }
+            "/skills" -> {
+                if (arg.startsWith("toggle ", ignoreCase = true)) {
+                    val target = arg.removePrefix("toggle ").trim()
+                    val match = _state.value.skills.firstOrNull {
+                        it.name.contains(target, ignoreCase = true) || it.slug.contains(target, ignoreCase = true)
+                    }
+                    if (match != null) {
+                        toggleSkill(match.id)
+                        val newState = if (!match.enabled) "enabled" else "disabled"
+                        appendLocalCommandReply(raw, "Skill **${match.name}** is now **$newState**.", "Command · /skills")
+                    } else {
+                        appendLocalCommandReply(raw, "No skill matching '$target'.", "Command · /skills")
+                    }
+                } else {
+                    val list = _state.value.skills.joinToString("\n") { sk ->
+                        val status = if (sk.enabled) "ON" else "OFF"
+                        "- [$status] ${sk.name} (`${sk.slug}`)"
+                    }
+                    appendLocalCommandReply(raw, "Skills & Tools:\n$list\n\nUse `/skills toggle <name>` to toggle.", "Command · /skills")
+                }
+                return true
+            }
+            "/router" -> {
+                val mode = when (arg.lowercase()) {
+                    "auto", "smart" -> RoutingMode.SMART_AUTO
+                    "fallback", "priority" -> RoutingMode.PRIORITY_FALLBACK
+                    "latency", "fast" -> RoutingMode.LOWEST_LATENCY
+                    "manual" -> RoutingMode.MANUAL
+                    else -> null
+                }
+                if (mode != null) {
+                    updateRouterConfig(_state.value.routerConfig.copy(mode = mode))
+                    appendLocalCommandReply(raw, "AuraRouter mode set to **${mode.label}**.", "Command · /router")
+                } else {
+                    val st = _state.value.routerStats
+                    val cfg = _state.value.routerConfig
+                    val summary = "AuraRouter Status:\n- Mode: ${cfg.mode.label}\n- Auto-Fallback: ${cfg.enableFallback}\n- Cache Hit Rate: ${st.hitRatePercent}% (${st.exactCacheHits} exact, ${st.semanticCacheHits} semantic, ${st.toolCacheHits} tool)\n- Fallback Recoveries: ${st.fallbackRecoveries}\n- Estimated Tokens Saved: ~${st.estimatedTokensSaved}"
+                    appendLocalCommandReply(raw, summary, "Command · /router")
+                }
+                return true
+            }
+            "/cache" -> {
+                if (arg.equals("clear", ignoreCase = true)) {
+                    clearCache()
+                    appendLocalCommandReply(raw, "Local prompt & tool cache cleared.", "Command · /cache")
+                } else {
+                    val st = _state.value.routerStats
+                    val entries = _state.value.cacheEntries.size
+                    appendLocalCommandReply(
+                        raw,
+                        "Cache Stats:\n- Hit Rate: ${st.hitRatePercent}%\n- Stored Entries: $entries\n- Exact Hits: ${st.exactCacheHits}\n- Semantic Hits: ${st.semanticCacheHits}\n- Tool Memo Hits: ${st.toolCacheHits}\n- Saved Tokens: ~${st.estimatedTokensSaved}\n\nUse `/cache clear` to flush.",
+                        "Command · /cache"
+                    )
+                }
+                return true
+            }
+            "/nocache" -> {
+                if (arg.isBlank()) {
+                    appendLocalCommandReply(raw, "Usage: `/nocache <your prompt>`", "Command · /nocache")
+                } else {
+                    sendMessage(arg, bypassCache = true)
+                }
+                return true
+            }
+            "/retry" -> {
+                val lastUser = _state.value.activeSession?.messages?.lastOrNull { it.role == "user" && !it.content.startsWith("/") }
+                if (lastUser != null) {
+                    sendMessage(lastUser.content, bypassCache = true)
+                } else {
+                    appendLocalCommandReply(raw, "No previous user message to retry.", "Command · /retry")
+                }
+                return true
+            }
+            "/gateway" -> {
+                when (arg.lowercase()) {
+                    "on", "start" -> {
+                        toggleLocalGateway(true)
+                        appendLocalCommandReply(raw, "Local OpenCode API Gateway started at `http://127.0.0.1:8910/v1` (model: `aura/auto`).", "Command · /gateway")
+                    }
+                    "off", "stop" -> {
+                        toggleLocalGateway(false)
+                        appendLocalCommandReply(raw, "Local API Gateway stopped.", "Command · /gateway")
+                    }
+                    else -> {
+                        val st = if (_state.value.gatewayRunning) "RUNNING at http://127.0.0.1:8910/v1" else "STOPPED"
+                        appendLocalCommandReply(raw, "Local Gateway is **$st**. Use `/gateway on` or `/gateway off`.", "Command · /gateway")
+                    }
+                }
+                return true
+            }
+            "/export" -> {
+                val sess = _state.value.activeSession
+                if (sess == null || sess.messages.isEmpty()) {
+                    appendLocalCommandReply(raw, "Current chat is empty; nothing to export.", "Command · /export")
+                } else {
+                    val fileName = "chat_${System.currentTimeMillis() / 1000L}.md"
+                    val md = buildString {
+                        appendLine("# ${sess.title}")
+                        appendLine()
+                        sess.messages.forEach { m ->
+                            appendLine("### ${m.role.uppercase()}")
+                            appendLine(m.content)
+                            appendLine()
+                        }
+                    }
+                    val outFile = File(store.workspaceDir, fileName)
+                    outFile.writeText(md)
+                    appendLocalCommandReply(raw, "Exported ${sess.messages.size} messages to local workspace: `$fileName`", "Command · /export")
+                }
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    private fun runContextCompaction(rawCmd: String, focus: String) {
+        val sess = _state.value.activeSession
+        if (sess == null || sess.messages.size < 3) {
+            appendLocalCommandReply(rawCmd, "Not enough messages in this chat to compact yet (need at least 3 messages).", "Command · /compact")
+            return
+        }
+        val beforeTokens = sess.messages.sumOf { AuraCacheEngine.estimateTokens(it.content) }
+        val transcript = sess.messages.joinToString("\n\n") { m ->
+            "${m.role.uppercase()}: ${m.content.take(1600)}"
+        }
+        val focusNote = if (focus.isNotBlank()) "Pay special attention to: $focus\n" else ""
+        val compactPrompt = "${focusNote}Summarize this conversation into a dense, lossless working memory checkpoint. Preserve all user goals, key facts, decisions, code identifiers, file paths, and unresolved tasks. Be concise.\n\n$transcript"
+
+        _state.update { it.copy(isGenerating = true) }
+        activeJob = viewModelScope.launch {
+            try {
+                val routed = router.completeWithRouting(
+                    providers = _state.value.providers,
+                    activeProviderId = _state.value.activeProviderId,
+                    config = _state.value.routerConfig,
+                    systemPrompt = "You are a precise context compaction engine.",
+                    messages = listOf(LlmTurnMessage(role = "user", content = compactPrompt)),
+                    tools = emptyList(),
+                    latestUserPrompt = compactPrompt,
+                    onDelta = {}
+                )
+                val summary = routed.response.text.trim()
+                val afterTokens = AuraCacheEngine.estimateTokens(summary)
+                val saved = (beforeTokens - afterTokens).coerceAtLeast(0L)
+                val compactedMsg = ChatMessage(
+                    role = "assistant",
+                    content = "Compacted Context Checkpoint (~$beforeTokens -> ~$afterTokens tokens, saved ~$saved tokens):\n\n$summary",
+                    cacheHitBadge = "Compacted (-$saved tok)",
+                    routedProviderBadge = "${routed.usedProvider.name} · ${routed.usedProvider.model}"
+                )
+                _state.update { s ->
+                    s.copy(
+                        sessions = s.sessions.map { sc ->
+                            if (sc.id == sess.id) sc.copy(messages = listOf(compactedMsg), updatedAt = System.currentTimeMillis()) else sc
+                        },
+                        routerStats = s.routerStats.copy(estimatedTokensSaved = s.routerStats.estimatedTokensSaved + saved)
+                    )
+                }
+            } catch (e: Exception) {
+                appendLocalCommandReply(rawCmd, "Compaction failed: ${e.message}", "Command · /compact")
+            } finally {
+                _state.update { it.copy(isGenerating = false) }
+                persist()
+            }
+        }
+    }
+
+    private fun appendLocalCommandReply(commandText: String, replyText: String, badge: String) {
+        val userMsg = ChatMessage(role = "user", content = commandText)
+        val replyMsg = ChatMessage(role = "assistant", content = replyText, cacheHitBadge = badge)
+        val existing = _state.value.activeSession
+        if (existing == null) {
+            val newSession = ChatSession(
+                title = commandText.take(36),
+                gemId = _state.value.activeGemId,
+                messages = listOf(userMsg, replyMsg)
+            )
+            _state.update { it.copy(sessions = listOf(newSession) + it.sessions, activeSessionId = newSession.id) }
+        } else {
+            _state.update { s ->
+                s.copy(
+                    sessions = s.sessions.map { sess ->
+                        if (sess.id == existing.id) sess.copy(messages = sess.messages + userMsg + replyMsg) else sess
+                    }
+                )
+            }
+        }
+        persist()
     }
 
     private fun appendErrorSessionMessage(prompt: String, errorText: String) {
