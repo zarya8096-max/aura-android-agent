@@ -66,7 +66,9 @@ import com.aura.agent.ui.screens.RouterScreen
 import com.aura.agent.ui.screens.SettingsScreen
 import androidx.compose.material.icons.outlined.SmartToy
 import com.aura.agent.ui.screens.SkillsScreen
+import androidx.compose.material.icons.automirrored.outlined.Send
 import com.aura.agent.ui.screens.SubagentsScreen
+import com.aura.agent.ui.screens.TelegramScreen
 import com.aura.agent.ui.theme.AuraTheme
 import com.aura.agent.viewmodel.ActiveScreen
 import com.aura.agent.viewmodel.AuraViewModel
@@ -199,6 +201,17 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                                 scope.launch { drawerState.close() }
                             },
                             icon = { Icon(Icons.Outlined.Memory, contentDescription = null) },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
+                        )
+
+                        NavigationDrawerItem(
+                            label = { Text(if (state.telegramRunning) "Telegram Bot · Online" else "Telegram Bot") },
+                            selected = state.activeScreen == ActiveScreen.TELEGRAM,
+                            onClick = {
+                                vm.navigateTo(ActiveScreen.TELEGRAM)
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null) },
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                         )
 
@@ -352,6 +365,15 @@ private fun AuraAppRoot(vm: AuraViewModel) {
                         onToggleSkill = { vm.toggleSkill(it) },
                         onSaveSkill = { vm.saveSkill(it) },
                         onDeleteSkill = { vm.deleteSkill(it) }
+                    )
+                    ActiveScreen.TELEGRAM -> TelegramScreen(
+                        config = state.telegramConfig,
+                        isRunning = state.telegramRunning,
+                        logs = state.telegramLogs,
+                        onBack = { vm.navigateTo(ActiveScreen.CHAT) },
+                        onSaveConfig = { vm.updateTelegramConfig(it) },
+                        onTestToken = { vm.verifyTelegramToken(it) },
+                        onToggleBot = { vm.toggleTelegramBot(it) }
                     )
                     ActiveScreen.ROUTER -> RouterScreen(
                         config = state.routerConfig,

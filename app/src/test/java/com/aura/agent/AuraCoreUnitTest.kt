@@ -185,4 +185,14 @@ class AuraCoreUnitTest {
         assertTrue(!help.contains("OpenBot", ignoreCase = true))
         assertTrue(!help.contains("DeepSeek Harness", ignoreCase = true))
     }
+
+    @Test
+    fun testTelegramWhitelistAndChunking() {
+        assertTrue(com.aura.agent.channels.TelegramBotBridge.isChatAllowed(12345L, "alice", ""))
+        assertTrue(com.aura.agent.channels.TelegramBotBridge.isChatAllowed(12345L, "alice", "12345, @bob"))
+        assertTrue(com.aura.agent.channels.TelegramBotBridge.isChatAllowed(999L, "Bob", "12345, @bob"))
+        assertTrue(!com.aura.agent.channels.TelegramBotBridge.isChatAllowed(999L, "eve", "12345, @bob"))
+        val chunks = com.aura.agent.channels.TelegramBotBridge.chunkTelegramText("A".repeat(8000), 3900)
+        assertEquals(3, chunks.size)
+    }
 }

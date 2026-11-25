@@ -241,6 +241,16 @@ data class ChatSession(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+
+@Serializable
+data class TelegramBridgeConfig(
+    val botToken: String = "",
+    val allowedChatIds: String = "",
+    val apiBaseUrl: String = "https://api.telegram.org",
+    val enableTools: Boolean = true,
+    val botUsername: String = ""
+)
+
 @Serializable
 data class AppStateSnapshot(
     val providers: List<ProviderConfig> = emptyList(),
@@ -259,5 +269,6 @@ data class AppStateSnapshot(
     val globalApprovalMode: GlobalApprovalMode = GlobalApprovalMode.CUSTOM,
     val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
     val auditLogs: List<AuditLogEntry> = emptyList(),
-    val subagents: List<SubagentConfig> = emptyList()
+    val subagents: List<SubagentConfig> = emptyList(),
+    val telegramConfig: TelegramBridgeConfig = TelegramBridgeConfig()
 )

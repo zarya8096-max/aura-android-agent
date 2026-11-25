@@ -3,7 +3,10 @@ package com.aura.agent.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.aura.agent.channels.TelegramBotBridge
 import com.aura.agent.commands.SlashCommandRegistry
+import com.aura.agent.data.TelegramBridgeConfig
+import java.util.concurrent.ConcurrentHashMap
 import com.aura.agent.data.AgentSkill
 import com.aura.agent.data.Defaults
 import com.aura.agent.data.AuditLogEntry
@@ -50,7 +53,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class ActiveScreen {
-    CHAT, GEMS, SKILLS, SUBAGENTS, AGENT_BRAIN, LOCAL_MODELS, ROUTER, SETTINGS
+    CHAT, GEMS, SKILLS, SUBAGENTS, AGENT_BRAIN, LOCAL_MODELS, TELEGRAM, ROUTER, SETTINGS
 }
 
 data class DownloadProgress(
@@ -102,7 +105,10 @@ data class AuraUiState(
     val toolPolicies: Map<String, ToolPermissionMode> = emptyMap(),
     val subagents: List<SubagentConfig> = emptyList(),
     val auditLogs: List<AuditLogEntry> = emptyList(),
-    val pendingApproval: PendingToolApproval? = null
+    val pendingApproval: PendingToolApproval? = null,
+    val telegramConfig: TelegramBridgeConfig = TelegramBridgeConfig(),
+    val telegramRunning: Boolean = false,
+    val telegramLogs: List<String> = emptyList()
 ) {
     val activeProvider: ProviderConfig?
         get() = providers.firstOrNull { it.id == activeProviderId } ?: providers.firstOrNull()
@@ -137,6 +143,16 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private var activeJob: Job? = null
     private var downloadJob: Job? = null
     private var persistJob: Job? = null
+
+    private val telegramHistories = ConcurrentHashMap<Long, MutableList<LlmTurnMessage>>()
+
+    private val telegramBridge = TelegramBotBridge(
+        getConfig = { _state.value.telegramConfig },
+        onHandleMessage = { chatId, _, text -> handleTelegramIncoming(chatId, text) },
+        onLog = { line ->
+            _state.update { s -> s.copy(telegramLogs = (listOf(line) + s.telegramLogs).take(60)) }
+        }
+    )
 
     private val gateway = LocalApiGateway(
         router = router,
@@ -183,7 +199,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             globalApprovalMode = snap.globalApprovalMode,
             toolPolicies = snap.toolPolicies,
             auditLogs = snap.auditLogs,
-            subagents = snap.subagents
+            subagents = snap.subagents,
+            telegramConfig = snap.telegramConfig
         )
     }
 
@@ -559,6 +576,125 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
+
+    fun updateTelegramConfig(cfg: TelegramBridgeConfig) {
+        _state.update { it.copy(telegramConfig = cfg) }
+        persist()
+    }
+
+    fun verifyTelegramToken(cfg: TelegramBridgeConfig) {
+        viewModelScope.launch {
+            _state.update { s -> s.copy(telegramLogs = (listOf("Verifying token...") + s.telegramLogs).take(60)) }
+            try {
+                val username = telegramBridge.verifyToken(cfg.botToken, cfg.apiBaseUrl)
+                _state.update { s ->
+                    s.copy(
+                        telegramConfig = s.telegramConfig.copy(botUsername = username),
+                        telegramLogs = (listOf("Verified bot: $username") + s.telegramLogs).take(60)
+                    )
+                }
+                persist()
+            } catch (e: Exception) {
+                _state.update { s -> s.copy(telegramLogs = (listOf("Verify failed: ${e.message}") + s.telegramLogs).take(60)) }
+            }
+        }
+    }
+
+    fun toggleTelegramBot(enable: Boolean) {
+        if (enable) {
+            val ok = telegramBridge.start()
+            _state.update { it.copy(telegramRunning = ok) }
+        } else {
+            telegramBridge.stop()
+            _state.update { it.copy(telegramRunning = false) }
+        }
+    }
+
+    private suspend fun handleTelegramIncoming(chatId: Long, text: String): String {
+        val trimmed = text.trim()
+        when (trimmed.lowercase()) {
+            "/start" -> return "Aura Agent is connected! Send any question, or use /clear to reset context and /status for router stats."
+            "/clear" -> {
+                telegramHistories.remove(chatId)
+                return "Telegram chat context cleared."
+            }
+            "/status" -> {
+                val s = _state.value
+                return "Aura Active Provider: ${s.activeProvider?.name} (${s.activeProvider?.model})\nCache Hit Rate: ${s.routerStats.hitRatePercent}% | Saved Tokens: ~${s.routerStats.estimatedTokensSaved}"
+            }
+        }
+
+        val s = _state.value
+        val currentGem = s.activeGem
+        val enabledSkills = if (s.telegramConfig.enableTools) resolveEnabledSkills(currentGem) else emptyList()
+        val systemPrompt = buildSystemPrompt(currentGem, enabledSkills, trimmed)
+        val systemHash = AuraCacheEngine.sha256Short(systemPrompt)
+        val history = telegramHistories.getOrPut(chatId) { mutableListOf() }
+        val ctxHash = AuraCacheEngine.sha256Short(history.takeLast(4).joinToString("|") { "${it.role}:${it.content.take(60)}" })
+
+        // Check AuraCache first!
+        val hit = AuraCacheEngine.lookup(
+            entries = s.cacheEntries,
+            config = s.routerConfig,
+            gemId = currentGem?.id.orEmpty(),
+            systemHash = systemHash,
+            contextHash = ctxHash,
+            prompt = trimmed
+        )
+        if (hit != null) {
+            history.add(LlmTurnMessage("user", trimmed))
+            history.add(LlmTurnMessage("assistant", hit.entry.response))
+            if (history.size > 20) history.subList(0, history.size - 20).clear()
+            return hit.entry.response
+        }
+
+        val turns = (history + LlmTurnMessage("user", trimmed)).toMutableList()
+        val toolSpecs = skillExecutor.buildToolSpecs(enabledSkills).sortedBy { it.name }
+        var finalReply = ""
+        var usedLabel = ""
+        var round = 0
+        while (round < 5) {
+            round++
+            val routed = router.completeWithRouting(
+                providers = _state.value.providers,
+                activeProviderId = _state.value.activeProviderId,
+                config = _state.value.routerConfig,
+                systemPrompt = systemPrompt,
+                messages = turns,
+                tools = toolSpecs,
+                latestUserPrompt = trimmed,
+                sessionId = "tg_$chatId",
+                onDelta = {}
+            )
+            usedLabel = "${routed.usedProvider.name} · ${routed.usedProvider.model}"
+            if (routed.response.toolCalls.isEmpty()) {
+                finalReply = routed.response.text
+                break
+            }
+            turns.add(LlmTurnMessage("assistant", routed.response.text, routed.response.toolCalls))
+            for (tc in routed.response.toolCalls) {
+                val res = skillExecutor.execute(tc.name, tc.argumentsJson, enabledSkills)
+                turns.add(LlmTurnMessage("tool", res.output, toolCallId = tc.id, toolName = tc.name))
+            }
+        }
+
+        val answer = finalReply.ifBlank { "(No response returned)" }
+        history.add(LlmTurnMessage("user", trimmed))
+        history.add(LlmTurnMessage("assistant", answer))
+        if (history.size > 20) history.subList(0, history.size - 20).clear()
+
+        _state.update { st ->
+            st.copy(
+                cacheEntries = AuraCacheEngine.putEntry(
+                    st.cacheEntries, st.routerConfig, currentGem?.id.orEmpty(),
+                    systemHash, ctxHash, trimmed, answer, usedLabel
+                )
+            )
+        }
+        persist()
+        return answer
+    }
+
     fun toggleLocalGateway(enable: Boolean) {
         if (enable) {
             val ok = gateway.start(port = 8910, bindAllInterfaces = false)
@@ -571,6 +707,7 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         gateway.stop()
+        telegramBridge.stop()
         super.onCleared()
     }
 
